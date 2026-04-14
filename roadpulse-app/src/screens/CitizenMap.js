@@ -10,6 +10,8 @@ import {
   Modal,
   Pressable,
   Alert,
+  TextInput,
+  Keyboard,
 } from "react-native";
 import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
@@ -55,9 +57,16 @@ const CitizenMap = ({ navigation }) => {
   const [activeHazardAlert, setActiveHazardAlert] = useState(null); // <-- Task 13
   const [currentLocation, setCurrentLocation] = useState(null); // <-- NEW STATE (Fixes Stale Closure)
 
+  // --- Task 15: Warning System States ---
+  const [destination, setDestination] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isRouteCompromised, setIsRouteCompromised] = useState(false);
+  const [aiText, setAiText] = useState("");
+
   const socketRef = useRef(null);
   const locationSubRef = useRef(null); // holds the tracking subscription
   const hasPrompted = useRef(false); // <-- Task 14: One-time prompt ref
+  const idleTimerRef = useRef(null); // <-- NEW: Tracks vehicle idling
 
   useEffect(() => {
     (async () => {
@@ -69,7 +78,7 @@ const CitizenMap = ({ navigation }) => {
             distanceInterval: 10, // 10 meters distance interval
           },
           (location) => {
-            const { latitude, longitude } = location.coords;
+            const { latitude, longitude, speed } = location.coords;
 
             // Update auto-center map view
             setMapRegion((prev) => ({
@@ -89,6 +98,28 @@ const CitizenMap = ({ navigation }) => {
 
             // Update current location for reactive radar
             setCurrentLocation({ latitude, longitude });
+
+            const currentSpeed = (speed === null || speed < 0) ? 0 : speed;
+            
+            console.log(`[ECO-DRIVE] Current Speed: ${currentSpeed} m/s`);
+
+            if (currentSpeed < 0.5) {
+              if (idleTimerRef.current === null) {
+                console.log("⏱️ Vehicle stopped. Starting Eco-Timer...");
+                idleTimerRef.current = setTimeout(() => {
+                  Alert.alert(
+                    "🌱 Eco-Drive Alert",
+                    "You have been idling for 2 minutes. Please turn off your engine to reduce emissions and save fuel."
+                  );
+                }, 120000); // 🚨 Set to 120000 (2 minutes) 
+              }
+            } else {
+              if (idleTimerRef.current !== null) {
+                console.log("🚗 Vehicle moving. Canceling Eco-Timer.");
+                clearTimeout(idleTimerRef.current);
+                idleTimerRef.current = null;
+              }
+            }
           },
         );
       }
@@ -327,6 +358,203 @@ const CitizenMap = ({ navigation }) => {
     setSelectedCoordinate(null);
   };
 
+  // --- Task 15: ZERO-API Headless Routing & Collision Engine ---
+  const handleSearch = async () => {
+    if (!searchQuery.trim() || !currentLocation) return;
+    Keyboard.dismiss(); 
+    
+    try {
+      // 1. Hyper-Local Text Enhancer
+      let optimizedQuery = searchQuery;
+      const lowerQuery = optimizedQuery.toLowerCase();
+
+      // If they just typed a place name (e.g., "Himalaya Mall"), force Ahmedabad context
+      if (!lowerQuery.includes("ahmedabad")) {
+          optimizedQuery = `${searchQuery}, Ahmedabad, Gujarat, India`;
+      } else if (!lowerQuery.includes("india")) {
+          optimizedQuery = `${searchQuery}, India`; 
+      }
+
+      console.log(`[HYPER-LOCAL GEOCODER] Searching for: ${optimizedQuery}`);
+      
+      const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(optimizedQuery)}&countrycodes=in&viewbox=72.45,23.15,72.75,22.90&bounded=1&limit=1`;
+      
+      const geoRes = await fetch(geocodeUrl, {
+        headers: {
+          'User-Agent': 'RoadPulse-Capstone-App/1.0 (Student Project)',
+          'Accept': 'application/json'
+        }
+      });
+      const geoData = await geoRes.json();
+
+      if (geoData && geoData.length > 0) {
+        let destLat = parseFloat(geoData[0].lat);
+        let destLng = parseFloat(geoData[0].lon);
+        let displayName = geoData[0].display_name.split(',')[0]; // Grab just the local name
+        setDestination({ latitude: destLat, longitude: destLng });
+
+        console.log(`[ROUTING] Generating simulated algorithmic path to ${displayName}...`);
+        
+        // 2. Simulated Routing Math (Interpolate 20 points between Citizen and Destination)
+        const waypoints = [];
+        const numPoints = 20; 
+        for (let i = 0; i <= numPoints; i++) {
+            waypoints.push({
+                lat: currentLocation.latitude + ((destLat - currentLocation.latitude) * (i / numPoints)),
+                lng: currentLocation.longitude + ((destLng - currentLocation.longitude) * (i / numPoints))
+            });
+        }
+
+        let hazardFound = false;
+        let hazardType = "";
+
+        // 3. The Collision Engine (Checking your generated path against the database)
+        for (const point of waypoints) {
+            
+            // Check active Floods
+            for (const report of hydroReports) {
+                if (report.depth === "Knee" || report.depth === "Waist") {
+                    const dist = calculateDistance(point.lat, point.lng, report.location.coordinates[1], report.location.coordinates[0]);
+                    if (dist < 300) { // 300m collision radius for the simulation
+                        hazardFound = true;
+                        hazardType = `🌊 Severe Waterlogging (${report.depth} Deep)`;
+                        break;
+                    }
+                }
+            }
+            if (hazardFound) break;
+
+            // Check active Blockades
+            for (const blockade of blockades) {
+                const dist = calculateDistance(point.lat, point.lng, blockade.location.coordinates[0][0][1], blockade.location.coordinates[0][0][0]);
+                if (dist < 300) {
+                    hazardFound = true;
+                    hazardType = "🚧 Active Construction Blockade";
+                    break;
+                }
+            }
+            if (hazardFound) break;
+        }
+
+        // 4. The Final Verdict Native Alert
+        if (hazardFound) {
+            Alert.alert(
+              "🚨 Route Compromised",
+              `Your path to ${displayName.toUpperCase()} intersects with:\n\n${hazardType}\n\nWarning: Proceed with extreme caution or divert.`
+            );
+        } else {
+            Alert.alert(
+              "✅ Route Clear", 
+              `No reported hazards detected on the vector to ${displayName.toUpperCase()}. Safe travels!`
+            );
+        }
+        // ADD THIS LINE: Clear the search bar after a successful search!
+        setSearchQuery("");
+
+      } else {
+        Alert.alert(
+          "📍 Location Not Found",
+          "Could not find that exact location in Ahmedabad. Try using a nearby landmark or spelling out the full name."
+        );
+      }
+    } catch (error) {
+      console.error('[OPEN-SOURCE ENGINE ERROR]', error.message);
+      Alert.alert("Network Error", "Could not reach the open-source routing servers.");
+    }
+  };
+
+  // const handleAICommand = async () => {
+  //   if (!aiText.trim() || !currentLocation) return;
+    
+  //   try {
+  //     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
+      
+  //     const response = await fetch(url, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({
+  //         contents: [
+  //           {
+  //             parts: [
+  //               {
+  //                 text: "You are a hazard parsing AI. The user will report a flood. Extract the depth as either 'Ankle', 'Knee', or 'Waist'. If unsure, default to 'Ankle'. Return strictly valid JSON with a single key 'depth'. Example: {\"depth\": \"Waist\"}. User text: " + aiText,
+  //               },
+  //             ],
+  //           },
+  //         ],
+  //       }),
+  //     });
+
+  //     const data = await response.json();
+  //     const rawText = data.candidates[0].content.parts[0].text;
+  //     const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "");
+  //     const parsedData = JSON.parse(cleanJson);
+
+  //     if (socketRef.current) {
+  //       socketRef.current.emit("ADD_HYDRO_REPORT", {
+  //         latitude: currentLocation.latitude,
+  //         longitude: currentLocation.longitude,
+  //         depth: parsedData.depth,
+  //       });
+  //       Alert.alert(
+  //         "🤖 AI Agent",
+  //         `Hazard recognized. ${parsedData.depth}-deep flood reported at your location.`
+  //       );
+  //     }
+  //     setAiText("");
+  //   } catch (error) {
+  //     console.error("AI Command Error:", error);
+  //     Alert.alert("AI Error", "Failed to parse hazard report.");
+  //   }
+  // };
+
+  const handleAICommand = async () => {
+    if (!aiText.trim() || !currentLocation) return;
+
+    try {
+      console.log("🧠 Sending to Gemini...");
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
+
+      const promptText = `You are a hazard parsing AI. The user will report a flood. Extract the depth as either 'Ankle', 'Knee', or 'Waist'. If unsure, default to 'Ankle'. Return strictly valid JSON with a single key 'depth'. Example: {"depth": "Waist"}. User text: ${aiText}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }]
+        })
+      });
+
+      const data = await response.json();
+
+      // Failsafe: Catch Gemini API errors (e.g., bad API key)
+      if (data.error) {
+        console.error("[GEMINI ERROR]", data.error);
+        Alert.alert("API Error", data.error.message || "Failed to reach AI.");
+        return;
+      }
+
+      const rawText = data.candidates[0].content.parts[0].text;
+      const cleanedText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsedData = JSON.parse(cleanedText);
+
+      if (socketRef.current) {
+        socketRef.current.emit("ADD_HYDRO_REPORT", {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          depth: parsedData.depth
+        });
+        Alert.alert("🤖 AI Agent", `Hazard recognized. ${parsedData.depth}-deep flood reported at your location.`);
+      }
+      setAiText("");
+
+    } catch (error) {
+      console.error("[AI PARSING ERROR]", error);
+      Alert.alert("AI Error", "Failed to parse hazard report.");
+    }
+  };
   const getHydroColor = (depth) => {
     switch (depth) {
       case "Ankle":
@@ -341,8 +569,10 @@ const CitizenMap = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
+
+      {/* --- Background Layer: The Map --- */}
       <MapView
         provider={PROVIDER_GOOGLE}
         style={styles.map}
@@ -353,7 +583,6 @@ const CitizenMap = ({ navigation }) => {
         onLongPress={handleLongPress}
       >
         {/* Render Roadblocks */}
-
         {blockades.map((blockade) => (
           <Polygon
             key={blockade._id}
@@ -395,7 +624,6 @@ const CitizenMap = ({ navigation }) => {
         ))}
 
         {/* 🚦 Render Smart Intersections */}
-
         {intersections.map((int) => (
           <Marker
             key={int.id}
@@ -417,26 +645,17 @@ const CitizenMap = ({ navigation }) => {
             </View>
           </Marker>
         ))}
+
+        {/* --- Simulated Routing Math for Hazard Detection is handled in handleSearch --- */}
       </MapView>
 
-      <SafeAreaView style={styles.overlay}>
-        <View
-          style={[
-            styles.topBar,
-            {
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            },
-          ]}
-        >
+      {/* --- Foreground Layer: UI Overlays --- */}
+      {/* 🛠️ ADDED pointerEvents="box-none" HERE TO FIX THE GHOST BOX BUG 🛠️ */}
+      <View style={styles.topOverlay} pointerEvents="box-none">
+        {/* Header Row */}
+        <View style={styles.headerRow}>
           <View>
             <Text style={styles.title}>Citizen Dashboard</Text>
-            {activeHazardAlert && (
-              <View style={styles.hazardBanner}>
-                <Text style={styles.hazardText}>{activeHazardAlert}</Text>
-              </View>
-            )}
             <Text style={styles.subtitle}>
               {ambulanceLocation
                 ? "🚨 Live Ambulance in Area"
@@ -447,7 +666,42 @@ const CitizenMap = ({ navigation }) => {
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+
+        {/* Radar Banner */}
+        {activeHazardAlert && (
+          <View style={styles.hazardBanner}>
+            <Text style={styles.hazardText}>{activeHazardAlert}</Text>
+          </View>
+        )}
+
+        {/* Search Container */}
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Where to?"
+            placeholderTextColor="#888"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+            <Text style={styles.searchButtonText}>Go</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* AI Command Input */}
+        <View style={styles.aiContainer}>
+          <TextInput
+            style={styles.aiInput}
+            placeholder="Describe hazard (use keyboard mic)..."
+            placeholderTextColor="#888"
+            value={aiText}
+            onChangeText={setAiText}
+          />
+          <TouchableOpacity style={styles.aiButton} onPress={handleAICommand}>
+            <Text style={styles.aiButtonText}>Send to AI</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* 🌊 REPORT WATERLOGGING MODAL 🌊 */}
       <Modal
@@ -509,7 +763,7 @@ const CitizenMap = ({ navigation }) => {
           <Text style={styles.emergencySubtitle}>PULL OVER IMMEDIATELY</Text>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -586,22 +840,61 @@ const darkMapStyle = [
 ];
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
+  container: { flex: 1, backgroundColor: "#121212" },
   map: { ...StyleSheet.absoluteFillObject },
-  overlay: {
+  topOverlay: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    pointerEvents: "box-none",
+    top: 50,
+    width: "100%",
+    paddingHorizontal: 15,
+    zIndex: 10,
   },
-  topBar: {
-    backgroundColor: "rgba(18, 18, 18, 0.8)",
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "rgba(28, 28, 30, 0.95)",
     padding: 15,
-    margin: 10,
+    borderRadius: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  searchContainer: {
+    flexDirection: "row",
+    marginTop: 15,
+    backgroundColor: "rgba(44, 44, 46, 0.9)",
     borderRadius: 12,
+    paddingHorizontal: 15,
+    alignItems: "center",
+    height: 55,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: "rgba(255,255,255,0.1)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  searchInput: {
+    flex: 1,
+    color: "#fff",
+    height: "100%",
+    fontSize: 16,
+  },
+  searchButton: {
+    backgroundColor: "#3498db",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginLeft: 10,
+  },
+  searchButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 14,
   },
   title: { color: "#fff", fontSize: 20, fontWeight: "bold" },
   subtitle: {
@@ -764,6 +1057,31 @@ const styles = StyleSheet.create({
     color: "#ff3b30",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  aiContainer: {
+    flexDirection: "row",
+    marginTop: 10,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    alignItems: "center",
+    height: 50,
+  },
+  aiInput: {
+    flex: 1,
+    color: "#000",
+    fontSize: 14,
+  },
+  aiButton: {
+    backgroundColor: "#2ecc71",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  aiButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 12,
   },
 });
 

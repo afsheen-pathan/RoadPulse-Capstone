@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   StatusBar,
   Alert,
+  TextInput,
 } from "react-native";
 import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
@@ -20,6 +21,7 @@ const AmbulanceMap = ({ navigation }) => {
   const [ambulanceLocation, setAmbulanceLocation] = useState(null);
   const [intersections, setIntersections] = useState([]); // <-- NEW STATE
   const [isTracking, setIsTracking] = useState(false); // Controls the button state
+  const [aiCommand, setAiCommand] = useState("");
 
   const [mapRegion, setMapRegion] = useState({
     latitude: 23.0225,
@@ -130,6 +132,97 @@ const AmbulanceMap = ({ navigation }) => {
     }
   };
 
+  // const handleAIVoiceCommand = async () => {
+  //   if (!aiCommand.trim()) return;
+
+  //   try {
+  //     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
+      
+  //     const response = await fetch(url, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({
+  //         contents: [
+  //           {
+  //             parts: [
+  //               {
+  //                 text: "You are an emergency vehicle AI assistant. The driver will give a command. Determine if they want to 'START' or 'STOP' their live location broadcasting. Return strictly valid JSON with a single key 'action' that is exactly 'START' or 'STOP'. Example: {\"action\": \"START\"}. User text: " + aiCommand,
+  //               },
+  //             ],
+  //           },
+  //         ],
+  //       }),
+  //     });
+
+  //     const data = await response.json();
+  //     const rawText = data.candidates[0].content.parts[0].text;
+  //     const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "");
+  //     const parsedData = JSON.parse(cleanJson);
+
+  //     if (parsedData.action === "START") {
+  //       if (!isTracking) await toggleTracking();
+  //       Alert.alert("🤖 AI Agent", "Understood. Initiating Live Vanguard Broadcast.");
+  //     } else if (parsedData.action === "STOP") {
+  //       if (isTracking) await toggleTracking();
+  //       Alert.alert("🤖 AI Agent", "Understood. Terminating Live Broadcast.");
+  //     }
+  //     setAiCommand("");
+  //   } catch (error) {
+  //     console.error("AI Command Error:", error);
+  //     Alert.alert("AI Error", "Failed to parse command.");
+  //   }
+  // };
+
+
+  const handleAIVoiceCommand = async () => {
+    if (!aiCommand.trim()) return;
+
+    try {
+      console.log("🧠 Sending to Gemini (Ambulance)...");
+      // Using the updated 2.5 model
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
+
+      const promptText = `You are an emergency vehicle AI assistant. The driver will give a command. Determine if they want to 'START' or 'STOP' their live location broadcasting. Return strictly valid JSON with a single key 'action' that is exactly 'START' or 'STOP'. Example: {"action": "START"}. User text: ${aiCommand}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }]
+        })
+      });
+
+      const data = await response.json();
+
+      // Failsafe: Catch Google API errors
+      if (data.error) {
+        console.error("[GEMINI ERROR]", data.error);
+        Alert.alert("API Error", data.error.message || "Failed to reach AI.");
+        return;
+      }
+
+      const rawText = data.candidates[0].content.parts[0].text;
+      const cleanedText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsedData = JSON.parse(cleanedText);
+
+      if (parsedData.action === "START") {
+        if (!isTracking) await toggleTracking();
+        Alert.alert("🤖 AI Agent", "Understood. Initiating Live Vanguard Broadcast.");
+      } else if (parsedData.action === "STOP") {
+        if (isTracking) await toggleTracking();
+        Alert.alert("🤖 AI Agent", "Understood. Terminating Live Broadcast.");
+      }
+      
+      setAiCommand("");
+
+    } catch (error) {
+      console.error("[AI PARSING ERROR]", error);
+      Alert.alert("AI Error", "Failed to parse command.");
+    }
+  };
+  
   const handleLogout = async () => {
     await AsyncStorage.removeItem("token");
     await AsyncStorage.removeItem("role");
@@ -205,6 +298,23 @@ const AmbulanceMap = ({ navigation }) => {
           </View>
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <Text style={styles.buttonText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* AI Voice Command */}
+        <View style={styles.aiCommandContainer}>
+          <TextInput
+            style={styles.aiCommandInput}
+            placeholder="Say 'Start tracking'..."
+            placeholderTextColor="#888"
+            value={aiCommand}
+            onChangeText={setAiCommand}
+          />
+          <TouchableOpacity
+            style={styles.aiCommandButton}
+            onPress={handleAIVoiceCommand}
+          >
+            <Text style={styles.buttonText}>Execute</Text>
           </TouchableOpacity>
         </View>
 
@@ -383,6 +493,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.8,
     shadowRadius: 5,
     elevation: 8,
+  },
+  aiCommandContainer: {
+    backgroundColor: "rgba(18, 18, 18, 0.9)",
+    margin: 10,
+    padding: 15,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  aiCommandInput: {
+    flex: 1,
+    color: "#fff",
+    fontSize: 16,
+  },
+  aiCommandButton: {
+    backgroundColor: "#007AFF",
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    marginLeft: 10,
   },
 });
 

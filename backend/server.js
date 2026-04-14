@@ -169,18 +169,20 @@ io.on('connection', (socket) => {
     // Phase 6: Handle Crowdsourced Hydro-Reports
     socket.on('ADD_HYDRO_REPORT', async (data) => {
         try {
+            console.log(`\n[BACKEND RECEIVE] Add Hydro Report triggered!`);
+            
             const newReport = new HydroReport({
                 location: {
                     type: 'Point',
-                    coordinates: [data.longitude, data.latitude]
+                    coordinates: [data.longitude, data.latitude] 
                 },
-                depth: data.depth
+                depth: data.depth,
+                expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000) 
             });
 
             const savedReport = await newReport.save();
-            console.log(`🌊 New Hydro-Report: ${data.depth} depth at [${data.latitude}, ${data.longitude}]`);
+            console.log(`✅ [DATABASE] New ${data.depth} flood report saved successfully.`);
             
-            // Broadcast to everyone!
             io.emit('NEW_HYDRO_REPORT', savedReport);
         } catch (error) {
             console.error('❌ Error adding hydro report:', error.message);
