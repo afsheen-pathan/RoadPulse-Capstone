@@ -18,9 +18,13 @@ const blockadeSchema = new mongoose.Schema({
         }
     },
     reason: {
-        type: String,
-        default: 'Road Construction'
-    }
+  type: String,
+  required: true
+},
+days: {
+  type: Number,
+  required: true
+}
 }, { timestamps: true });
 
 blockadeSchema.index({ location: '2dsphere' });

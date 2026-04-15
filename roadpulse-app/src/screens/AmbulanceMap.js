@@ -13,15 +13,18 @@ import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTheme } from '../context/ThemeContext';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 const AmbulanceMap = ({ navigation }) => {
+  const { theme, isDark, toggleTheme } = useTheme();
   const [blockades, setBlockades] = useState([]);
   const [ambulanceLocation, setAmbulanceLocation] = useState(null);
   const [intersections, setIntersections] = useState([]); // <-- NEW STATE
   const [isTracking, setIsTracking] = useState(false); // Controls the button state
   const [aiCommand, setAiCommand] = useState("");
+
 
   const [mapRegion, setMapRegion] = useState({
     latitude: 23.0225,
@@ -132,50 +135,6 @@ const AmbulanceMap = ({ navigation }) => {
     }
   };
 
-  // const handleAIVoiceCommand = async () => {
-  //   if (!aiCommand.trim()) return;
-
-  //   try {
-  //     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
-      
-  //     const response = await fetch(url, {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify({
-  //         contents: [
-  //           {
-  //             parts: [
-  //               {
-  //                 text: "You are an emergency vehicle AI assistant. The driver will give a command. Determine if they want to 'START' or 'STOP' their live location broadcasting. Return strictly valid JSON with a single key 'action' that is exactly 'START' or 'STOP'. Example: {\"action\": \"START\"}. User text: " + aiCommand,
-  //               },
-  //             ],
-  //           },
-  //         ],
-  //       }),
-  //     });
-
-  //     const data = await response.json();
-  //     const rawText = data.candidates[0].content.parts[0].text;
-  //     const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "");
-  //     const parsedData = JSON.parse(cleanJson);
-
-  //     if (parsedData.action === "START") {
-  //       if (!isTracking) await toggleTracking();
-  //       Alert.alert("🤖 AI Agent", "Understood. Initiating Live Vanguard Broadcast.");
-  //     } else if (parsedData.action === "STOP") {
-  //       if (isTracking) await toggleTracking();
-  //       Alert.alert("🤖 AI Agent", "Understood. Terminating Live Broadcast.");
-  //     }
-  //     setAiCommand("");
-  //   } catch (error) {
-  //     console.error("AI Command Error:", error);
-  //     Alert.alert("AI Error", "Failed to parse command.");
-  //   }
-  // };
-
-
   const handleAIVoiceCommand = async () => {
     if (!aiCommand.trim()) return;
 
@@ -246,7 +205,7 @@ const AmbulanceMap = ({ navigation }) => {
         style={styles.map}
         region={mapRegion}
         showsUserLocation={false} // We use the custom marker below
-        customMapStyle={darkMapStyle}
+        customMapStyle={isDark ? darkMapStyle : []}
       >
         {blockades.map((blockade) => (
           <Polygon
@@ -424,7 +383,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "rgba(18, 18, 18, 0.9)",
     padding: 15,
     margin: 10,
     borderRadius: 12,

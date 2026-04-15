@@ -17,17 +17,29 @@ const LoginScreen = ({ navigation }) => {
 
   const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
+  // ✅ AUTO LOGIN FIX
   useEffect(() => {
     const checkExistingSession = async () => {
-      const token = await AsyncStorage.getItem('token');
-      const savedRole = await AsyncStorage.getItem('role');
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const savedRole = await AsyncStorage.getItem('role');
 
-      if (token && savedRole) {
-        if (savedRole === 'Citizen') navigation.replace('CitizenMap');
-        else if (savedRole === 'Contractor') navigation.replace('ContractorMap');
-        else if (savedRole === 'Ambulance') navigation.replace('AmbulanceMap');
+        if (token && savedRole) {
+          const role = savedRole.toLowerCase(); // ✅ FIX
+
+          if (role === "citizen") {
+            navigation.replace("Citizen");
+          } else if (role === "contractor") {
+            navigation.replace("Contractor");
+          } else if (role === "ambulance") {
+            navigation.replace("Ambulance");
+          }
+        }
+      } catch (err) {
+        console.log("Session error:", err);
       }
     };
+
     checkExistingSession();
   }, []);
 
@@ -49,24 +61,28 @@ const LoginScreen = ({ navigation }) => {
       const data = await response.json();
 
       if (response.ok) {
-        // Save token and role
-        await AsyncStorage.setItem('token', data.token);
-        await AsyncStorage.setItem('role', data.user.role);
+        const role = data.user.role.toLowerCase(); // ✅ FIX
 
-        // Conditional navigation based on role
-        const role = data.user.role;
-        if (role === 'Citizen') {
-          navigation.replace('CitizenMap');
-        } else if (role === 'Contractor') {
-          navigation.replace('ContractorMap');
-        } else if (role === 'Ambulance') {
-          navigation.replace('AmbulanceMap');
+        // ✅ SAVE EVERYTHING
+        await AsyncStorage.setItem('token', data.token);
+        await AsyncStorage.setItem('role', role);
+        await AsyncStorage.setItem('email', data.user.email); // 🔥 NEW
+
+        // ✅ NAVIGATION FIX
+        if (role === 'citizen') {
+          navigation.replace('Citizen');
+        } else if (role === 'contractor') {
+          navigation.replace('Contractor');
+        } else if (role === 'ambulance') {
+          navigation.replace('Ambulance');
         } else {
-          Alert.alert('Error', 'Unrecognized user role');
+          Alert.alert('Error', 'Invalid role');
         }
+
       } else {
         Alert.alert('Error', data.message || 'Login failed');
       }
+
     } catch (error) {
       console.error('Login Error:', error);
       Alert.alert('Error', 'Could not connect to server');
@@ -79,12 +95,16 @@ const LoginScreen = ({ navigation }) => {
       style={styles.container}
     >
       <View style={styles.content}>
+
         <View style={styles.header}>
           <Text style={styles.title}>Welcome to RoadPulse</Text>
-          <Text style={styles.subtitle}>Secure Access: Municipal & Field Operations</Text>
+          <Text style={styles.subtitle}>
+            Secure Access: Municipal & Field Operations
+          </Text>
         </View>
 
         <View style={styles.form}>
+
           <TextInput
             style={styles.input}
             placeholder="Email Address"
@@ -112,8 +132,11 @@ const LoginScreen = ({ navigation }) => {
             style={styles.link}
             onPress={() => navigation.navigate('Register')}
           >
-            <Text style={styles.linkText}>Don't have an account? Register</Text>
+            <Text style={styles.linkText}>
+              Don't have an account? Register
+            </Text>
           </TouchableOpacity>
+
         </View>
       </View>
     </KeyboardAvoidingView>

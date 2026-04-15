@@ -17,8 +17,10 @@ import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTheme } from '../context/ThemeContext';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+const API_URL = "http://10.42.96.103:5000";
 
 // --- Task 13: Haversine Distance Helper ---
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -27,9 +29,9 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const phi2 = (lat2 * Math.PI) / 180;
   const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
   const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-
+  
   const a =
-    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+  Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
     Math.cos(phi1) *
       Math.cos(phi2) *
       Math.sin(deltaLambda / 2) *
@@ -40,9 +42,15 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 const CitizenMap = ({ navigation }) => {
+  const { theme, isDark, toggleTheme } = useTheme();
   const [blockades, setBlockades] = useState([]);
   const [ambulanceLocation, setAmbulanceLocation] = useState(null); // <-- NEW STATE
   const [intersections, setIntersections] = useState([]); // <-- NEW STATE
+  const [uiAlert, setUiAlert] = useState(null);
+  
+  const showCenterAlert = (title, message, actions = []) => {
+  setCenterAlert({ title, message, actions });
+};
 
   const [mapRegion, setMapRegion] = useState({
     latitude: 23.0225,
@@ -56,7 +64,7 @@ const CitizenMap = ({ navigation }) => {
   const [selectedCoordinate, setSelectedCoordinate] = useState(null);
   const [activeHazardAlert, setActiveHazardAlert] = useState(null); // <-- Task 13
   const [currentLocation, setCurrentLocation] = useState(null); // <-- NEW STATE (Fixes Stale Closure)
-
+const [centerAlert, setCenterAlert] = useState(null);
   // --- Task 15: Warning System States ---
   const [destination, setDestination] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,7 +75,7 @@ const CitizenMap = ({ navigation }) => {
   const locationSubRef = useRef(null); // holds the tracking subscription
   const hasPrompted = useRef(false); // <-- Task 14: One-time prompt ref
   const idleTimerRef = useRef(null); // <-- NEW: Tracks vehicle idling
-
+  
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -86,7 +94,7 @@ const CitizenMap = ({ navigation }) => {
               latitude,
               longitude,
             }));
-
+            
             // Emit to server
             if (socketRef.current) {
               console.log("📡 [CITIZEN FRONTEND] Emitting location update...");
@@ -95,23 +103,23 @@ const CitizenMap = ({ navigation }) => {
                 longitude,
               });
             }
-
+            
             // Update current location for reactive radar
             setCurrentLocation({ latitude, longitude });
-
-            const currentSpeed = (speed === null || speed < 0) ? 0 : speed;
+            
+            const currentSpeed = speed === null || speed < 0 ? 0 : speed;
             
             console.log(`[ECO-DRIVE] Current Speed: ${currentSpeed} m/s`);
-
+            
             if (currentSpeed < 0.5) {
               if (idleTimerRef.current === null) {
                 console.log("⏱️ Vehicle stopped. Starting Eco-Timer...");
                 idleTimerRef.current = setTimeout(() => {
-                  Alert.alert(
+                  showCenterAlert(
                     "🌱 Eco-Drive Alert",
-                    "You have been idling for 2 minutes. Please turn off your engine to reduce emissions and save fuel."
+                    "You have been idling for 2 minutes. Please turn off your engine to reduce emissions and save fuel.",
                   );
-                }, 120000); // 🚨 Set to 120000 (2 minutes) 
+                }, 120000); // 🚨 Set to 120000 (2 minutes)
               }
             } else {
               if (idleTimerRef.current !== null) {
@@ -124,14 +132,22 @@ const CitizenMap = ({ navigation }) => {
         );
       }
     })();
-
+    
     fetchBlockades();
-
+    
     socketRef.current = io(API_URL);
-
+    
     // Listen for new roadblocks
     socketRef.current.on("NEW_ROADBLOCK", (newBlockade) => {
-      setBlockades((prev) => [...prev, newBlockade]);
+      setBlockades((prev) => {
+        const exists = prev.some((b) => b._id === newBlockade._id);
+        if (exists) return prev; // 🚫 prevent duplicate
+        return [...prev, newBlockade];
+      });
+    });
+
+    socketRef.current.on("REMOVE_BLOCKADE", (id) => {
+      setBlockades((prev) => prev.filter((b) => b._id !== id));
     });
 
     // <-- NEW: Listen for the live ambulance -->
@@ -232,6 +248,13 @@ const CitizenMap = ({ navigation }) => {
     };
   }, []);
 
+  useEffect(() => {
+  if (uiAlert && (!uiAlert.actions || uiAlert.actions.length === 0)) {
+    const timer = setTimeout(() => setUiAlert(null), 4000);
+    return () => clearTimeout(timer);
+  }
+}, [uiAlert]);
+
   // --- Task 13.1: Reactive Radar (Fixes Stale Closure) ---
   useEffect(() => {
     if (!currentLocation) return;
@@ -256,35 +279,32 @@ const CitizenMap = ({ navigation }) => {
         // --- Task 14: Proximity Ping Logic ---
         if (!hasPrompted.current) {
           hasPrompted.current = true;
-          Alert.alert(
-            "Local Hazard Check",
-            "You are near a reported waterlogging zone. Is it still flooded?",
-            [
-              {
-                text: "No, It's Clear",
-                onPress: () => {
-                  console.log(
-                    `\n[1. FRONTEND EMIT] Tapped "No". Emitting VERIFY_HYDRO_REPORT...`,
-                  );
-                  console.log(
-                    `[1. FRONTEND EMIT] Payload -> reportId: ${report._id}, isStillThere: false`,
-                  );
-                  socketRef.current.emit("VERIFY_HYDRO_REPORT", {
-                    reportId: report._id,
-                    isStillThere: false,
-                  });
-                },
-              },
-              {
-                text: "Yes, Still Here",
-                onPress: () =>
-                  socketRef.current.emit("VERIFY_HYDRO_REPORT", {
-                    reportId: report._id,
-                    isStillThere: true,
-                  }),
-              },
-            ],
-          );
+          showCenterAlert(
+  "🌊 Waterlogging Detected",
+  "Is this area still flooded?",
+  [
+    {
+      text: "No",
+      onPress: () => {
+        socketRef.current.emit("VERIFY_HYDRO_REPORT", {
+          reportId: report._id,
+          isStillThere: false,
+        });
+        setCenterAlert(null);
+      }
+    },
+    {
+      text: "Yes",
+      onPress: () => {
+        socketRef.current.emit("VERIFY_HYDRO_REPORT", {
+          reportId: report._id,
+          isStillThere: true,
+        });
+        setCenterAlert(null);
+      }
+    }
+  ]
+);
         }
         break;
       }
@@ -361,8 +381,8 @@ const CitizenMap = ({ navigation }) => {
   // --- Task 15: ZERO-API Headless Routing & Collision Engine ---
   const handleSearch = async () => {
     if (!searchQuery.trim() || !currentLocation) return;
-    Keyboard.dismiss(); 
-    
+    Keyboard.dismiss();
+
     try {
       // 1. Hyper-Local Text Enhancer
       let optimizedQuery = searchQuery;
@@ -370,145 +390,135 @@ const CitizenMap = ({ navigation }) => {
 
       // If they just typed a place name (e.g., "Himalaya Mall"), force Ahmedabad context
       if (!lowerQuery.includes("ahmedabad")) {
-          optimizedQuery = `${searchQuery}, Ahmedabad, Gujarat, India`;
+        optimizedQuery = `${searchQuery}, Ahmedabad, Gujarat, India`;
       } else if (!lowerQuery.includes("india")) {
-          optimizedQuery = `${searchQuery}, India`; 
+        optimizedQuery = `${searchQuery}, India`;
       }
 
       console.log(`[HYPER-LOCAL GEOCODER] Searching for: ${optimizedQuery}`);
-      
+
       const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(optimizedQuery)}&countrycodes=in&viewbox=72.45,23.15,72.75,22.90&bounded=1&limit=1`;
-      
+
       const geoRes = await fetch(geocodeUrl, {
         headers: {
-          'User-Agent': 'RoadPulse-Capstone-App/1.0 (Student Project)',
-          'Accept': 'application/json'
-        }
+          "User-Agent": "RoadPulse-Capstone-App/1.0 (Student Project)",
+          Accept: "application/json",
+        },
       });
       const geoData = await geoRes.json();
 
       if (geoData && geoData.length > 0) {
         let destLat = parseFloat(geoData[0].lat);
         let destLng = parseFloat(geoData[0].lon);
-        let displayName = geoData[0].display_name.split(',')[0]; // Grab just the local name
+        let displayName = geoData[0].display_name.split(",")[0]; // Grab just the local name
         setDestination({ latitude: destLat, longitude: destLng });
 
-        console.log(`[ROUTING] Generating simulated algorithmic path to ${displayName}...`);
-        
+        console.log(
+          `[ROUTING] Generating simulated algorithmic path to ${displayName}...`,
+        );
+
         // 2. Simulated Routing Math (Interpolate 20 points between Citizen and Destination)
         const waypoints = [];
-        const numPoints = 20; 
+        const numPoints = 20;
         for (let i = 0; i <= numPoints; i++) {
-            waypoints.push({
-                lat: currentLocation.latitude + ((destLat - currentLocation.latitude) * (i / numPoints)),
-                lng: currentLocation.longitude + ((destLng - currentLocation.longitude) * (i / numPoints))
-            });
+          waypoints.push({
+            lat:
+              currentLocation.latitude +
+              (destLat - currentLocation.latitude) * (i / numPoints),
+            lng:
+              currentLocation.longitude +
+              (destLng - currentLocation.longitude) * (i / numPoints),
+          });
         }
 
         let hazardFound = false;
         let hazardType = "";
+        let foundBlockade = null; // ✅ ADD THIS
 
         // 3. The Collision Engine (Checking your generated path against the database)
         for (const point of waypoints) {
-            
-            // Check active Floods
-            for (const report of hydroReports) {
-                if (report.depth === "Knee" || report.depth === "Waist") {
-                    const dist = calculateDistance(point.lat, point.lng, report.location.coordinates[1], report.location.coordinates[0]);
-                    if (dist < 300) { // 300m collision radius for the simulation
-                        hazardFound = true;
-                        hazardType = `🌊 Severe Waterlogging (${report.depth} Deep)`;
-                        break;
-                    }
-                }
+          // Check active Floods
+          for (const report of hydroReports) {
+            if (report.depth === "Knee" || report.depth === "Waist") {
+              const dist = calculateDistance(
+                point.lat,
+                point.lng,
+                report.location.coordinates[1],
+                report.location.coordinates[0],
+              );
+              if (dist < 300) {
+                // 300m collision radius for the simulation
+                hazardFound = true;
+                hazardType = `🌊 Severe Waterlogging (${report.depth} Deep)`;
+                break;
+              }
             }
-            if (hazardFound) break;
+          }
+          if (hazardFound) break;
 
-            // Check active Blockades
-            for (const blockade of blockades) {
-                const dist = calculateDistance(point.lat, point.lng, blockade.location.coordinates[0][0][1], blockade.location.coordinates[0][0][0]);
-                if (dist < 300) {
-                    hazardFound = true;
-                    hazardType = "🚧 Active Construction Blockade";
-                    break;
-                }
+          // Check active Blockades
+          for (const blockade of blockades) {
+            const dist = calculateDistance(
+              point.lat,
+              point.lng,
+              blockade.location.coordinates[0][0][1],
+              blockade.location.coordinates[0][0][0],
+            );
+            if (dist < 300) {
+              hazardFound = true;
+              hazardType = `🚧 ${blockade.reason} (${blockade.days} days)`;
+              foundBlockade = blockade; // ✅ STORE IT
+              break;
             }
-            if (hazardFound) break;
+          }
+          if (hazardFound) break;
         }
 
         // 4. The Final Verdict Native Alert
         if (hazardFound) {
-            Alert.alert(
-              "🚨 Route Compromised",
-              `Your path to ${displayName.toUpperCase()} intersects with:\n\n${hazardType}\n\nWarning: Proceed with extreme caution or divert.`
-            );
-        } else {
-            Alert.alert(
-              "✅ Route Clear", 
-              `No reported hazards detected on the vector to ${displayName.toUpperCase()}. Safe travels!`
-            );
-        }
-        // ADD THIS LINE: Clear the search bar after a successful search!
-        setSearchQuery("");
 
+  if (hazardType.includes("Flood")) {
+
+    let time = "Unknown";
+
+    if (hazardType.includes("Ankle")) time = "45 minutes";
+    if (hazardType.includes("Knee")) time = "3 hours";
+    if (hazardType.includes("Waist")) time = "6 hours";
+
+    showCenterAlert(
+    "🌊 Water Logging Detected",
+    `Type: ${hazardType}\nClearance: ${time}`
+  );
+
+} else {
+
+  showCenterAlert(
+    "🚧 Road Blocked",
+    `Reason: ${foundBlockade?.reason || "Unknown"}\nClearance: ${foundBlockade?.days || "?"} days`
+  );
+  }
+
+} else {
+          showCenterAlert(
+            "✅ Route Clear",
+            `No reported hazards detected on the vector to ${displayName.toUpperCase()}. Safe travels!`,
+          );
+        }
+        setSearchQuery("");
       } else {
-        Alert.alert(
+        showCenterAlert(
           "📍 Location Not Found",
-          "Could not find that exact location in Ahmedabad. Try using a nearby landmark or spelling out the full name."
+          "Could not find that exact location in Ahmedabad. Try using a nearby landmark or spelling out the full name.",
         );
       }
     } catch (error) {
-      console.error('[OPEN-SOURCE ENGINE ERROR]', error.message);
-      Alert.alert("Network Error", "Could not reach the open-source routing servers.");
+      console.error("[OPEN-SOURCE ENGINE ERROR]", error.message);
+      showCenterAlert(
+        "Network Error",
+        "Could not reach the open-source routing servers.",
+      );
     }
   };
-
-  // const handleAICommand = async () => {
-  //   if (!aiText.trim() || !currentLocation) return;
-    
-  //   try {
-  //     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
-      
-  //     const response = await fetch(url, {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify({
-  //         contents: [
-  //           {
-  //             parts: [
-  //               {
-  //                 text: "You are a hazard parsing AI. The user will report a flood. Extract the depth as either 'Ankle', 'Knee', or 'Waist'. If unsure, default to 'Ankle'. Return strictly valid JSON with a single key 'depth'. Example: {\"depth\": \"Waist\"}. User text: " + aiText,
-  //               },
-  //             ],
-  //           },
-  //         ],
-  //       }),
-  //     });
-
-  //     const data = await response.json();
-  //     const rawText = data.candidates[0].content.parts[0].text;
-  //     const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "");
-  //     const parsedData = JSON.parse(cleanJson);
-
-  //     if (socketRef.current) {
-  //       socketRef.current.emit("ADD_HYDRO_REPORT", {
-  //         latitude: currentLocation.latitude,
-  //         longitude: currentLocation.longitude,
-  //         depth: parsedData.depth,
-  //       });
-  //       Alert.alert(
-  //         "🤖 AI Agent",
-  //         `Hazard recognized. ${parsedData.depth}-deep flood reported at your location.`
-  //       );
-  //     }
-  //     setAiText("");
-  //   } catch (error) {
-  //     console.error("AI Command Error:", error);
-  //     Alert.alert("AI Error", "Failed to parse hazard report.");
-  //   }
-  // };
 
   const handleAICommand = async () => {
     if (!aiText.trim() || !currentLocation) return;
@@ -520,11 +530,11 @@ const CitizenMap = ({ navigation }) => {
       const promptText = `You are a hazard parsing AI. The user will report a flood. Extract the depth as either 'Ankle', 'Knee', or 'Waist'. If unsure, default to 'Ankle'. Return strictly valid JSON with a single key 'depth'. Example: {"depth": "Waist"}. User text: ${aiText}`;
 
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: promptText }] }]
-        })
+          contents: [{ parts: [{ text: promptText }] }],
+        }),
       });
 
       const data = await response.json();
@@ -532,27 +542,32 @@ const CitizenMap = ({ navigation }) => {
       // Failsafe: Catch Gemini API errors (e.g., bad API key)
       if (data.error) {
         console.error("[GEMINI ERROR]", data.error);
-        Alert.alert("API Error", data.error.message || "Failed to reach AI.");
+        showCenterAlert("API Error", data.error.message || "Failed to reach AI.");
         return;
       }
 
       const rawText = data.candidates[0].content.parts[0].text;
-      const cleanedText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+      const cleanedText = rawText
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
       const parsedData = JSON.parse(cleanedText);
 
       if (socketRef.current) {
         socketRef.current.emit("ADD_HYDRO_REPORT", {
           latitude: currentLocation.latitude,
           longitude: currentLocation.longitude,
-          depth: parsedData.depth
+          depth: parsedData.depth,
         });
-        Alert.alert("🤖 AI Agent", `Hazard recognized. ${parsedData.depth}-deep flood reported at your location.`);
+        showCenterAlert(
+          "🤖 AI Agent",
+          `Hazard recognized. ${parsedData.depth}-deep flood reported at your location.`,
+        );
       }
       setAiText("");
-
     } catch (error) {
       console.error("[AI PARSING ERROR]", error);
-      Alert.alert("AI Error", "Failed to parse hazard report.");
+      showCenterAlert("AI Error", "Failed to parse hazard report.");
     }
   };
   const getHydroColor = (depth) => {
@@ -568,6 +583,8 @@ const CitizenMap = ({ navigation }) => {
     }
   };
 
+
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -579,7 +596,7 @@ const CitizenMap = ({ navigation }) => {
         region={mapRegion}
         showsUserLocation={true}
         showsMyLocationButton={true}
-        customMapStyle={darkMapStyle}
+        customMapStyle={isDark ? darkMapStyle : []}
         onLongPress={handleLongPress}
       >
         {/* Render Roadblocks */}
@@ -648,6 +665,46 @@ const CitizenMap = ({ navigation }) => {
 
         {/* --- Simulated Routing Math for Hazard Detection is handled in handleSearch --- */}
       </MapView>
+{centerAlert && (
+  <View style={styles.centerOverlay}>
+
+    <View style={styles.centerCard}>
+
+      <Text style={styles.centerTitle}>
+        {centerAlert.title}
+      </Text>
+
+      <Text style={styles.centerText}>
+        {centerAlert.message}
+      </Text>
+
+      {/* BUTTONS */}
+      {centerAlert.actions?.length > 0 ? (
+        <View style={{ flexDirection: "row", marginTop: 15, gap: 10 }}>
+          {centerAlert.actions.map((btn, i) => (
+            <TouchableOpacity
+              key={i}
+              style={styles.centerBtn}
+              onPress={btn.onPress}
+            >
+              <Text style={{ color:"#fff" }}>{btn.text}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={[styles.centerBtn, { marginTop: 15 }]}
+          onPress={() => setCenterAlert(null)}
+        >
+          <Text style={{ color:"#fff" }}>OK</Text>
+        </TouchableOpacity>
+      )}
+
+    </View>
+
+  </View>
+)}
+
 
       {/* --- Foreground Layer: UI Overlays --- */}
       {/* 🛠️ ADDED pointerEvents="box-none" HERE TO FIX THE GHOST BOX BUG 🛠️ */}
@@ -853,7 +910,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "rgba(28, 28, 30, 0.95)",
+    backgroundColor: "rgba(28,28,30,0.9)",
     padding: 15,
     borderRadius: 15,
     shadowColor: "#000",
@@ -896,7 +953,11 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 14,
   },
-  title: { color: "#fff", fontSize: 20, fontWeight: "bold" },
+  title: { 
+  color: "#fff", 
+  fontSize: 22,   // 🔥 bigger
+  fontWeight: "bold" 
+},
   subtitle: {
     color: "#FF453A",
     fontSize: 14,
@@ -1059,19 +1120,20 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   aiContainer: {
-    flexDirection: "row",
-    marginTop: 10,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    alignItems: "center",
-    height: 50,
-  },
-  aiInput: {
-    flex: 1,
-    color: "#000",
-    fontSize: 14,
-  },
+  flexDirection: "row",
+  marginTop: 10,
+  backgroundColor: "rgba(44,44,46,0.9)",
+  borderRadius: 12,
+  paddingHorizontal: 10,
+  alignItems: "center",
+  height: 45,
+},
+
+aiInput: {
+  flex: 1,
+  color: "#fff",
+  fontSize: 14,
+},
   aiButton: {
     backgroundColor: "#2ecc71",
     paddingVertical: 8,
@@ -1083,6 +1145,83 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 12,
   },
+  centerOverlay:{
+  position:'absolute',
+  top:0,
+  bottom:0,
+  left:0,
+  right:0,
+  justifyContent:'center',
+  alignItems:'center',
+  backgroundColor:'rgba(0,0,0,0.6)',
+  zIndex:9999
+},
+
+centerCard:{
+  width:'85%',
+  backgroundColor:'#1c1c1e',
+  padding:20,
+  borderRadius:20,
+  alignItems:'center'
+},
+
+centerTitle:{
+  color:'#fff',
+  fontSize:18,
+  fontWeight:'bold',
+  marginBottom:10,
+  textAlign:'center'
+},
+
+centerText:{
+  color:'#ccc',
+  textAlign:'center'
+},
+
+centerBtn:{
+  flex:1,
+  backgroundColor:'#FF3B30',
+  padding:12,
+  borderRadius:10,
+  alignItems:'center'
+},
+closeBtn:{
+  position:'absolute',
+  top:10,
+  right:10
+},
+
+alertWarning:{
+  color:"orange",
+  marginTop:8,
+  fontWeight:"bold"
+},
+// ✅ ALERT STACK (NEW)
+alertStack:{
+  position:'absolute',
+  top:120,
+  left:15,
+  right:15,
+  zIndex:999,
+  gap:10
+},
+
+// ✅ YES/NO CARD
+actionCard:{
+  backgroundColor:"#1c1c1e",
+  padding:12,
+  borderRadius:12,
+  borderLeftWidth:4,
+  borderColor:"#f39c12"
+},
+
+actionBtn:{
+  flex:1,
+  backgroundColor:"#333",
+  padding:10,
+  borderRadius:8,
+  alignItems:"center"
+},
 });
 
 export default CitizenMap;
