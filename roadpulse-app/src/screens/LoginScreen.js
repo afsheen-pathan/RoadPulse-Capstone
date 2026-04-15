@@ -96,14 +96,19 @@ const LoginScreen = ({ navigation }) => {
     >
       <View style={styles.content}>
 
-        <View style={styles.header}>
-          <Text style={styles.title}>Welcome to RoadPulse</Text>
-          <Text style={styles.subtitle}>
-            Secure Access: Municipal & Field Operations
-          </Text>
+        <View style={styles.logoContainer}>
+    <Text style={styles.logo}>🚦</Text>
+    <Text style={styles.appName}>RoadPulse</Text>
+  </View>
+
+  <View style={styles.header}>
+    <Text style={styles.title}>Welcome Back</Text>
+    <Text style={styles.subtitle}>
+      Smart Emergency Traffic System
+    </Text>
         </View>
 
-        <View style={styles.form}>
+        <View style={styles.card}>
 
           <TextInput
             style={styles.input}
@@ -145,60 +150,90 @@ const LoginScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#121212',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  header: {
-    marginBottom: 40,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  subtitle: {
-    color: '#aaa',
-    fontSize: 16,
-    marginTop: 5,
-  },
-  form: {
-    width: '100%',
-  },
-  input: {
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
+  flex: 1,
+  backgroundColor: '#0a0a0a',
+},
+
+content: {
+  flex: 1,
+  justifyContent: 'center',
+  padding: 20,
+},
+
+logoContainer: {
+  alignItems: 'center',
+  marginBottom: 30,
+},
+
+logo: {
+  fontSize: 50,
+},
+
+appName: {
+  color: '#fff',
+  fontSize: 26,
+  fontWeight: 'bold',
+  marginTop: 5,
+},
+
+header: {
+  marginBottom: 30,
+  alignItems: 'center',
+},
+
+title: {
+  color: '#fff',
+  fontSize: 28,
+  fontWeight: 'bold',
+},
+
+subtitle: {
+  color: '#888',
+  fontSize: 14,
+  marginTop: 5,
+  textAlign: 'center',
+},
+
+card: {
+  backgroundColor: '#1c1c1e',
+  padding: 20,
+  borderRadius: 15,
+  borderWidth: 1,
+  borderColor: '#2c2c2e',
+},
+
+input: {
+  backgroundColor: '#2c2c2e',
+  color: '#fff',
+  padding: 15,
+  borderRadius: 12,
+  marginBottom: 15,
+  fontSize: 16,
+  borderWidth: 1,
+  borderColor: '#3a3a3c',
+},
   button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
+  backgroundColor: '#FF3B30',
+  padding: 15,
+  borderRadius: 12,
+  alignItems: 'center',
+  marginTop: 10,
+},
   buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  link: {
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  linkText: {
-    color: '#007AFF',
-    fontSize: 14,
-  },
+  color: '#fff',
+  fontSize: 18,
+  fontWeight: 'bold',
+},
+
+link: {
+  marginTop: 20,
+  alignItems: 'center',
+},
+
+linkText: {
+  color: '#FF3B30',
+  fontSize: 15,
+},
 });
 
 export default LoginScreen;

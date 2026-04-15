@@ -14,6 +14,7 @@ import * as Location from "expo-location";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from '../context/ThemeContext';
+import { Polyline } from 'react-native-maps';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -24,7 +25,13 @@ const AmbulanceMap = ({ navigation }) => {
   const [intersections, setIntersections] = useState([]); // <-- NEW STATE
   const [isTracking, setIsTracking] = useState(false); // Controls the button state
   const [aiCommand, setAiCommand] = useState("");
-
+  const [destination, setDestination] = useState("");
+const [isNavigating, setIsNavigating] = useState(false);
+const [routePoints, setRoutePoints] = useState([]);
+const [routeAlert, setRouteAlert] = useState(null);
+const [altRoute, setAltRoute] = useState([]);
+const [showSearch, setShowSearch] = useState(false);
+const [showVoice, setShowVoice] = useState(false);
 
   const [mapRegion, setMapRegion] = useState({
     latitude: 23.0225,
@@ -197,6 +204,84 @@ const AmbulanceMap = ({ navigation }) => {
     }));
   };
 
+  const generateRoute = (start, end) => {
+  const points = [];
+
+  const steps = 20;
+
+  for (let i = 0; i <= steps; i++) {
+    const lat = start.latitude + (end.latitude - start.latitude) * (i / steps);
+    const lng = start.longitude + (end.longitude - start.longitude) * (i / steps);
+
+    points.push({ latitude: lat, longitude: lng });
+  }
+
+  return points;
+};
+
+
+const checkRouteForBlockages = (route) => {
+  for (let point of route) {
+    for (let b of blockades) {
+      const coords = b.location.coordinates[0];
+
+      for (let c of coords) {
+        const dist =
+          Math.abs(point.latitude - c[1]) +
+          Math.abs(point.longitude - c[0]);
+
+        if (dist < 0.001) {
+          return b; // 🚧 found blockage
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const handleNavigation = () => {
+  if (!ambulanceLocation) {
+    Alert.alert("Location not ready");
+    return;
+  }
+
+  // fake destination (for now)
+  const destinationCoords = {
+    latitude: ambulanceLocation.latitude + 0.01,
+    longitude: ambulanceLocation.longitude + 0.01,
+  };
+
+  const route = generateRoute(ambulanceLocation, destinationCoords);
+  setRoutePoints(route);
+
+  const foundBlock = checkRouteForBlockages(route);
+
+  if (foundBlock) {
+  const alt = generateAltRoute(ambulanceLocation, destinationCoords);
+  setAltRoute(alt);
+
+  setRouteAlert({
+    type: "blockade",
+    reason: foundBlock.reason,
+    days: foundBlock.days,
+  });
+} else {
+  setRouteAlert({ type: "safe" });
+}
+};
+
+const generateAltRoute = (start, end) => {
+  const offset = 0.003; // shift route slightly
+
+  const newEnd = {
+    latitude: end.latitude + offset,
+    longitude: end.longitude - offset,
+  };
+
+  return generateRoute(start, newEnd);
+};
+
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -244,7 +329,52 @@ const AmbulanceMap = ({ navigation }) => {
             </View>
           </Marker>
         ))}
+        {routePoints.length > 0 && (
+    <Polyline
+  coordinates={routePoints}
+  strokeColor="#007AFF"
+  strokeWidth={4}
+  lineDashPattern={[10, 5]} // 👈 dashed
+/>
+
+  )}
+
+  {altRoute.length > 0 && (
+  <Polyline
+  coordinates={altRoute}
+  strokeColor="#00FF00"
+  strokeWidth={5}
+/>
+)}
       </MapView>
+
+      <TouchableOpacity
+  style={styles.voiceFab}
+  onPress={() => setShowVoice(!showVoice)}
+>
+  <Text style={{ fontSize: 22 }}>🎙️</Text>
+</TouchableOpacity>
+
+      {routePoints.length > 0 && (
+  <View style={styles.routeStatus}>
+    <Text style={{ color: "#fff" }}>
+      🚑 Navigation Active
+    </Text>
+  </View>
+)}
+
+{routePoints.length > 0 && (
+  <TouchableOpacity
+    style={styles.stopNavBtn}
+    onPress={() => {
+      setRoutePoints([]);
+      setAltRoute([]);
+      setRouteAlert(null);
+    }}
+  >
+    <Text style={{ color: "#fff" }}>Stop Navigation</Text>
+  </TouchableOpacity>
+)}
 
 
       <SafeAreaView style={styles.overlay}>
@@ -255,12 +385,14 @@ const AmbulanceMap = ({ navigation }) => {
               {isTracking ? "📡 Broadcasting Live" : "⏸️ Tracking Paused"}
             </Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.buttonText}>Logout</Text>
-          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowSearch(!showSearch)}>
+  <Text style={{ color: "#fff", fontSize: 30 }}>🔍</Text>
+</TouchableOpacity>
         </View>
 
         {/* AI Voice Command */}
+        {showVoice && routePoints.length === 0 && (
+
         <View style={styles.aiCommandContainer}>
           <TextInput
             style={styles.aiCommandInput}
@@ -276,6 +408,27 @@ const AmbulanceMap = ({ navigation }) => {
             <Text style={styles.buttonText}>Execute</Text>
           </TouchableOpacity>
         </View>
+        )}
+
+{showSearch && routePoints.length === 0 && (
+        <View style={styles.navContainer}>
+  <TextInput
+    placeholder="Enter Destination (e.g. Civil Hospital)"
+    placeholderTextColor="#888"
+    value={destination}
+    onChangeText={setDestination}
+    style={styles.navInput}
+  />
+
+  <TouchableOpacity
+  style={styles.navButton}
+  onPress={handleNavigation}
+>
+  <Text style={styles.buttonText}>Start Navigation</Text>
+</TouchableOpacity>
+</View>
+)}
+
 
         {/* Tracking Toggle Button */}
         <View style={styles.bottomContainer}>
@@ -292,6 +445,59 @@ const AmbulanceMap = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      {routeAlert && (
+  <View style={styles.alertBox}>
+
+    {/* ❌ CLOSE BUTTON */}
+    <TouchableOpacity
+      style={styles.closeBtn}
+      onPress={() => setRouteAlert(null)}
+    >
+      <Text style={{ color: "#fff", fontWeight: "bold" }}>✕</Text>
+    </TouchableOpacity>
+
+    <Text style={styles.alertTitle}>
+      {routeAlert.type === "blockade" ? "🚧 Route Blocked" : "✅ Route Clear"}
+    </Text>
+
+    {routeAlert.type === "blockade" && (
+      <>
+        <Text style={styles.alertText}>
+          Reason: {routeAlert.reason}
+        </Text>
+
+        <Text style={styles.alertText}>
+          Days: {routeAlert.days}
+        </Text>
+
+        <TouchableOpacity
+          style={styles.altBtn}
+          onPress={() => {
+            setRoutePoints(altRoute);
+            setAltRoute([]);
+            setRouteAlert(null); // ✅ CLOSE
+          }}
+        >
+          <Text style={{ color: "#fff" }}>Use Alternative Route</Text>
+        </TouchableOpacity>
+      </>
+    )}
+
+    {routeAlert.type === "safe" && (
+      <>
+        <Text style={styles.alertText}>No blockage detected</Text>
+
+        <TouchableOpacity
+          style={styles.altBtn}
+          onPress={() => setRouteAlert(null)}
+        >
+          <Text style={{ color: "#fff" }}>OK</Text>
+        </TouchableOpacity>
+      </>
+    )}
+
+  </View>
+)}
     </View>
   );
 };
@@ -383,13 +589,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    backgroundColor:"#655f5fff",
     padding: 15,
-    margin: 10,
+    paddingTop:0,
+    margin: 15,
+    marginTop:30,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#333",
   },
-  title: { color: "#fff", fontSize: 20, fontWeight: "bold" },
+  title: { color: "#fff", fontSize: 22, fontWeight: "bold", marginTop:10},
   subtitle: { color: "#aaa", fontSize: 14, marginTop: 4 },
   logoutButton: { padding: 10, backgroundColor: "#333", borderRadius: 8 },
   buttonText: { color: "#fff", fontWeight: "bold" },
@@ -474,6 +683,103 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginLeft: 10,
   },
+  navContainer: {
+  backgroundColor: "rgba(18,18,18,0.95)",
+  marginHorizontal: 10,
+  marginTop: 10,
+  padding: 15,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderColor: "#333",
+},
+
+navInput: {
+  color: "#fff",
+  borderBottomWidth: 1,
+  borderColor: "#555",
+  marginBottom: 10,
+},
+
+navButton: {
+  backgroundColor: "#FF3B30",
+  padding: 12,
+  borderRadius: 10,
+  alignItems: "center",
+},
+alertBox: {
+  position: "absolute",
+  top: "30%",
+  left: 20,
+  right: 20,
+  backgroundColor: "#1c1c1e",
+  padding: 20,
+  borderRadius: 15,
+  borderWidth: 1,
+  borderColor: "#333",
+  zIndex: 20,
+  elevation: 20,
+},
+
+alertTitle: {
+  color: "#fff",
+  fontSize: 18,
+  fontWeight: "bold",
+  marginBottom: 10,
+  textAlign: "center",
+},
+
+alertText: {
+  color: "#ccc",
+  textAlign: "center",
+  marginBottom: 10,
+},
+
+altBtn: {
+  backgroundColor: "#FF3B30",
+  padding: 12,
+  borderRadius: 10,
+  alignItems: "center",
+},
+closeBtn: {
+  position: "absolute",
+  top: 10,
+  right: 10,
+  zIndex: 10,
+},
+routeStatus: {
+  position: "absolute",
+  bottom: 120,
+  alignSelf: "center",
+  backgroundColor: "#7575baff",
+  paddingHorizontal: 15,
+  paddingVertical: 8,
+  borderRadius: 20,
+  borderWidth: 1,
+  borderColor: "#333",
+},
+stopNavBtn: {
+  position: "absolute",
+  top:130,
+  alignSelf: "center",
+  backgroundColor: "#FF3B30",
+  paddingHorizontal: 20,
+  paddingVertical: 10,
+  borderRadius: 20,
+  zIndex: 20,
+},
+voiceFab: {
+  position: "absolute",
+  bottom: 140,
+  right: 20,
+  backgroundColor: "#7575baff",
+  width: 55,
+  height: 55,
+  borderRadius: 30,
+  justifyContent: "center",
+  alignItems: "center",
+  elevation: 10,
+  zIndex: 10,
+},
 });
 
 

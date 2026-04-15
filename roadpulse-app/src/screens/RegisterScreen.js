@@ -57,12 +57,19 @@ const RegisterScreen = ({ navigation }) => {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Join RoadPulse</Text>
-          <Text style={styles.subtitle}>Urban Infrastructure & Traffic Intelligence</Text>
-        </View>
+        <View style={styles.logoContainer}>
+  <Text style={styles.logo}>🚦</Text>
+  <Text style={styles.appName}>RoadPulse</Text>
+</View>
 
-        <View style={styles.form}>
+<View style={styles.header}>
+  <Text style={styles.title}>Create Account</Text>
+  <Text style={styles.subtitle}>
+    Smart Emergency Traffic System
+  </Text>
+</View>
+
+        <View style={styles.card}>
           <TextInput
             style={styles.input}
             placeholder="Full Name"
@@ -155,16 +162,42 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
   },
-  input: {
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
+  logoContainer: {
+    // flexDirection: 'row',
+    // justifyContent:'center',
+  alignItems: 'center',
+  marginBottom: 30,
+},
+
+logo: {
+  fontSize: 50,
+},
+
+appName: {
+  color: '#fff',
+  fontSize: 26,
+  fontWeight: 'bold',
+  marginTop: 5,
+},
+
+card: {
+  backgroundColor: '#1c1c1e',
+  padding: 20,
+  borderRadius: 15,
+  borderWidth: 1,
+  borderColor: '#2c2c2e',
+},
+
+input: {
+  backgroundColor: '#2c2c2e',
+  color: '#fff',
+  padding: 15,
+  borderRadius: 12,
+  marginBottom: 15,
+  fontSize: 16,
+  borderWidth: 1,
+  borderColor: '#3a3a3c',
+},
   label: {
     color: '#fff',
     fontSize: 16,
@@ -176,33 +209,35 @@ const styles = StyleSheet.create({
     marginBottom: 25,
   },
   roleButton: {
-    width: '100%',           // Take full width
-    padding: 15,             // Make them slightly taller
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 10,        // Add space between the stacked buttons
-    backgroundColor: '#1e1e1e',
-  },
+  width: '100%',
+  padding: 15,
+  borderRadius: 12,
+  alignItems: 'center',
+  marginBottom: 10,
+  backgroundColor: '#2c2c2e',
+  borderWidth: 1,
+  borderColor: '#3a3a3c',
+},
   roleButtonActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
-  },
+  backgroundColor: '#FF3B30',
+  borderColor: '#FF3B30',
+},
   roleText: {
-    color: '#aaa',
-    fontWeight: '600',
-  },
-  roleTextActive: {
-    color: '#fff',
-  },
+  color: '#aaa',
+  fontWeight: '600',
+},
+
+roleTextActive: {
+  color: '#fff',
+  fontWeight: 'bold',
+},
   button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
+  backgroundColor: '#FF3B30',
+  padding: 15,
+  borderRadius: 12,
+  alignItems: 'center',
+  marginTop: 10,
+},
   buttonText: {
     color: '#fff',
     fontSize: 18,
@@ -213,8 +248,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   linkText: {
-    color: '#007AFF',
-    fontSize: 14,
+    color: '#FF3B30',
+    fontSize: 15,
   },
 });
 
