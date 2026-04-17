@@ -9,29 +9,34 @@ import {
   Alert,
   TextInput,
 } from "react-native";
-import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Polygon, Marker, PROVIDER_GOOGLE, Polyline } from "react-native-maps";
 import * as Location from "expo-location";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from '../context/ThemeContext';
-import { Polyline } from 'react-native-maps';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 const AmbulanceMap = ({ navigation }) => {
-  const { theme, isDark, toggleTheme } = useTheme();
+  const { theme, isDark } = useTheme();
   const [blockades, setBlockades] = useState([]);
   const [ambulanceLocation, setAmbulanceLocation] = useState(null);
-  const [intersections, setIntersections] = useState([]); // <-- NEW STATE
-  const [isTracking, setIsTracking] = useState(false); // Controls the button state
+  const [intersections, setIntersections] = useState([]);
+  const [isTracking, setIsTracking] = useState(false);
   const [aiCommand, setAiCommand] = useState("");
   const [destination, setDestination] = useState("");
-const [isNavigating, setIsNavigating] = useState(false);
-const [routePoints, setRoutePoints] = useState([]);
-const [routeAlert, setRouteAlert] = useState(null);
-const [altRoute, setAltRoute] = useState([]);
-const [showSearch, setShowSearch] = useState(false);
-const [showVoice, setShowVoice] = useState(false);
+  const [routePoints, setRoutePoints] = useState([]);
+  const [routeAlert, setRouteAlert] = useState(null);
+  const [centerAlert, setCenterAlert] = useState(null);
+  
+  const showCenterAlert = (title, message, actions = []) => {
+    console.log(`🔔 [CENTER ALERT] ${title}: ${message}`);
+    setCenterAlert({ title, message, actions });
+  };
+  const [altRoute, setAltRoute] = useState([]);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showVoice, setShowVoice] = useState(false);
 
   const [mapRegion, setMapRegion] = useState({
     latitude: 23.0225,
@@ -41,7 +46,7 @@ const [showVoice, setShowVoice] = useState(false);
   });
 
   const socketRef = useRef(null);
-  const locationSubRef = useRef(null); // Holds the background tracking task
+  const locationSubRef = useRef(null);
 
   useEffect(() => {
     fetchBlockades();
@@ -51,7 +56,6 @@ const [showVoice, setShowVoice] = useState(false);
       setBlockades((prev) => [...prev, newBlockade]);
     });
 
-    // 🚦 Listen for smart intersections
     socketRef.current.on("INITIAL_INTERSECTIONS", (data) => {
       const formatted = data.map((int) => ({ ...int, status: "RED" }));
       setIntersections(formatted);
@@ -65,8 +69,6 @@ const [showVoice, setShowVoice] = useState(false);
       );
     });
 
-
-    // Just grab the initial location to center the map (NOT continuous tracking)
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -83,7 +85,7 @@ const [showVoice, setShowVoice] = useState(false);
 
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
-      if (locationSubRef.current) locationSubRef.current.remove(); // Clean up tracking on exit
+      if (locationSubRef.current) locationSubRef.current.remove();
     };
   }, []);
 
@@ -99,20 +101,15 @@ const [showVoice, setShowVoice] = useState(false);
 
   const toggleTracking = async () => {
     if (isTracking) {
-      // STOP TRACKING
       if (locationSubRef.current) {
         locationSubRef.current.remove();
         locationSubRef.current = null;
       }
       setIsTracking(false);
     } else {
-      // START TRACKING
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Denied",
-          "Please allow location access to broadcast.",
-        );
+        showCenterAlert("Permission Denied", "Please allow location access to broadcast.");
         return;
       }
 
@@ -125,15 +122,11 @@ const [showVoice, setShowVoice] = useState(false);
         },
         (location) => {
           const { latitude, longitude } = location.coords;
-          
-          // 1. ADD THIS LOG: Proves the phone's GPS hardware is actually firing
           console.log(`\n📍 [AMBULANCE FRONTEND] GPS hardware moved: Lat ${latitude.toFixed(4)}, Lng ${longitude.toFixed(4)}`); 
-
           setAmbulanceLocation({ latitude, longitude });
           setMapRegion((prev) => ({ ...prev, latitude, longitude })); 
           
           if (socketRef.current) {
-            // 2. ADD THIS LOG: Proves the app is pushing to the server
             console.log(`📡 [AMBULANCE FRONTEND] Emitting to socket...`); 
             socketRef.current.emit('AMBULANCE_LOCATION_UPDATE', { latitude, longitude });
           }
@@ -147,9 +140,7 @@ const [showVoice, setShowVoice] = useState(false);
 
     try {
       console.log("🧠 Sending to Gemini (Ambulance)...");
-      // Using the updated 2.5 model
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
-
+      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
       const promptText = `You are an emergency vehicle AI assistant. The driver will give a command. Determine if they want to 'START' or 'STOP' their live location broadcasting. Return strictly valid JSON with a single key 'action' that is exactly 'START' or 'STOP'. Example: {"action": "START"}. User text: ${aiCommand}`;
 
       const response = await fetch(url, {
@@ -161,11 +152,9 @@ const [showVoice, setShowVoice] = useState(false);
       });
 
       const data = await response.json();
-
-      // Failsafe: Catch Google API errors
       if (data.error) {
         console.error("[GEMINI ERROR]", data.error);
-        Alert.alert("API Error", data.error.message || "Failed to reach AI.");
+        showCenterAlert("API Error", data.error.message || "Failed to reach AI.");
         return;
       }
 
@@ -174,29 +163,19 @@ const [showVoice, setShowVoice] = useState(false);
       const parsedData = JSON.parse(cleanedText);
 
       if (parsedData.action === "START") {
+        showCenterAlert("🤖 AI Agent", "Understood. Initiating Live Vanguard Broadcast.");
         if (!isTracking) await toggleTracking();
-        Alert.alert("🤖 AI Agent", "Understood. Initiating Live Vanguard Broadcast.");
       } else if (parsedData.action === "STOP") {
+        showCenterAlert("🤖 AI Agent", "Understood. Terminating Live Broadcast.");
         if (isTracking) await toggleTracking();
-        Alert.alert("🤖 AI Agent", "Understood. Terminating Live Broadcast.");
       }
-      
       setAiCommand("");
-
     } catch (error) {
       console.error("[AI PARSING ERROR]", error);
-      Alert.alert("AI Error", "Failed to parse command.");
+      showCenterAlert("AI Error", "Failed to parse command.");
     }
   };
   
-  const handleLogout = async () => {
-    await AsyncStorage.removeItem("token");
-    await AsyncStorage.removeItem("role");
-    if (socketRef.current) socketRef.current.disconnect();
-    if (locationSubRef.current) locationSubRef.current.remove();
-    navigation.replace("Login");
-  };
-
   const formatPolygonCoords = (geoJsonCoords) => {
     return geoJsonCoords[0].map((coord) => ({
       longitude: coord[0],
@@ -205,82 +184,62 @@ const [showVoice, setShowVoice] = useState(false);
   };
 
   const generateRoute = (start, end) => {
-  const points = [];
+    const points = [];
+    const steps = 20;
+    for (let i = 0; i <= steps; i++) {
+      const lat = start.latitude + (end.latitude - start.latitude) * (i / steps);
+      const lng = start.longitude + (end.longitude - start.longitude) * (i / steps);
+      points.push({ latitude: lat, longitude: lng });
+    }
+    return points;
+  };
 
-  const steps = 20;
-
-  for (let i = 0; i <= steps; i++) {
-    const lat = start.latitude + (end.latitude - start.latitude) * (i / steps);
-    const lng = start.longitude + (end.longitude - start.longitude) * (i / steps);
-
-    points.push({ latitude: lat, longitude: lng });
-  }
-
-  return points;
-};
-
-
-const checkRouteForBlockages = (route) => {
-  for (let point of route) {
-    for (let b of blockades) {
-      const coords = b.location.coordinates[0];
-
-      for (let c of coords) {
-        const dist =
-          Math.abs(point.latitude - c[1]) +
-          Math.abs(point.longitude - c[0]);
-
-        if (dist < 0.001) {
-          return b; // 🚧 found blockage
+  const checkRouteForBlockages = (route) => {
+    for (let point of route) {
+      for (let b of blockades) {
+        const coords = b.location.coordinates[0];
+        for (let c of coords) {
+          const dist = Math.abs(point.latitude - c[1]) + Math.abs(point.longitude - c[0]);
+          if (dist < 0.001) return b;
         }
       }
     }
-  }
-  return null;
-};
-
-const handleNavigation = () => {
-  if (!ambulanceLocation) {
-    Alert.alert("Location not ready");
-    return;
-  }
-
-  // fake destination (for now)
-  const destinationCoords = {
-    latitude: ambulanceLocation.latitude + 0.01,
-    longitude: ambulanceLocation.longitude + 0.01,
+    return null;
   };
 
-  const route = generateRoute(ambulanceLocation, destinationCoords);
-  setRoutePoints(route);
-
-  const foundBlock = checkRouteForBlockages(route);
-
-  if (foundBlock) {
-  const alt = generateAltRoute(ambulanceLocation, destinationCoords);
-  setAltRoute(alt);
-
-  setRouteAlert({
-    type: "blockade",
-    reason: foundBlock.reason,
-    days: foundBlock.days,
-  });
-} else {
-  setRouteAlert({ type: "safe" });
-}
-};
-
-const generateAltRoute = (start, end) => {
-  const offset = 0.003; // shift route slightly
-
-  const newEnd = {
-    latitude: end.latitude + offset,
-    longitude: end.longitude - offset,
+  const handleNavigation = () => {
+    if (!ambulanceLocation) {
+      showCenterAlert("Location not ready", "GPS signal required for mission routing.");
+      return;
+    }
+    const destinationCoords = {
+      latitude: ambulanceLocation.latitude + 0.01,
+      longitude: ambulanceLocation.longitude + 0.01,
+    };
+    const route = generateRoute(ambulanceLocation, destinationCoords);
+    setRoutePoints(route);
+    const foundBlock = checkRouteForBlockages(route);
+    if (foundBlock) {
+      const alt = generateAltRoute(ambulanceLocation, destinationCoords);
+      setAltRoute(alt);
+      setRouteAlert({
+        type: "blockade",
+        reason: foundBlock.reason,
+        days: foundBlock.days,
+      });
+    } else {
+      setRouteAlert({ type: "safe" });
+    }
   };
 
-  return generateRoute(start, newEnd);
-};
-
+  const generateAltRoute = (start, end) => {
+    const offset = 0.003;
+    const newEnd = {
+      latitude: end.latitude + offset,
+      longitude: end.longitude - offset,
+    };
+    return generateRoute(start, newEnd);
+  };
 
   return (
     <View style={styles.container}>
@@ -289,7 +248,7 @@ const generateAltRoute = (start, end) => {
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         region={mapRegion}
-        showsUserLocation={false} // We use the custom marker below
+        showsUserLocation={false}
         customMapStyle={isDark ? darkMapStyle : []}
       >
         {blockades.map((blockade) => (
@@ -304,20 +263,18 @@ const generateAltRoute = (start, end) => {
 
         {ambulanceLocation && (
           <Marker coordinate={ambulanceLocation} anchor={{ x: 0.5, y: 0.5 }}>
-            <View style={styles.ambulanceMarker}>
-              <View style={styles.ambulanceMarkerCore} />
+            <View style={[styles.ambulanceMarker, { borderColor: theme.primary }]}>
+              <View style={[styles.ambulanceMarkerCore, { backgroundColor: theme.primary }]} />
             </View>
           </Marker>
         )}
 
-        {/* 🚦 Render Smart Intersections */}
         {intersections.map((int) => (
           <Marker
             key={int.id}
             coordinate={{ latitude: int.lat, longitude: int.lng }}
-            title={int.name}
           >
-            <View style={styles.trafficLightPill}>
+            <View style={[styles.trafficLightPill, { borderColor: theme.border }]}>
               <View
                 style={[
                   styles.trafficLightCircle,
@@ -330,248 +287,311 @@ const generateAltRoute = (start, end) => {
           </Marker>
         ))}
         {routePoints.length > 0 && (
-    <Polyline
-  coordinates={routePoints}
-  strokeColor="#007AFF"
-  strokeWidth={4}
-  lineDashPattern={[10, 5]} // 👈 dashed
-/>
-
-  )}
-
-  {altRoute.length > 0 && (
-  <Polyline
-  coordinates={altRoute}
-  strokeColor="#00FF00"
-  strokeWidth={5}
-/>
-)}
+          <Polyline
+            coordinates={routePoints}
+            strokeColor="#007AFF"
+            strokeWidth={4}
+            lineDashPattern={[10, 5]}
+          />
+        )}
+        {altRoute.length > 0 && (
+          <Polyline
+            coordinates={altRoute}
+            strokeColor="#00FF00"
+            strokeWidth={5}
+          />
+        )}
       </MapView>
 
+
       <TouchableOpacity
-  style={styles.voiceFab}
-  onPress={() => setShowVoice(!showVoice)}
->
-  <Text style={{ fontSize: 22 }}>🎙️</Text>
-</TouchableOpacity>
+        style={[styles.voiceFab, { backgroundColor: theme.primary }]}
+        onPress={() => setShowVoice(!showVoice)}
+      >
+        <Ionicons name="mic" size={28} color="#000" />
+      </TouchableOpacity>
 
-      {routePoints.length > 0 && (
-  <View style={styles.routeStatus}>
-    <Text style={{ color: "#fff" }}>
-      🚑 Navigation Active
-    </Text>
-  </View>
-)}
+      {routePoints.length > 0 && !routeAlert && (
+        <View style={styles.dispatchOverlay}>
+          <View style={[styles.dispatchCard, { backgroundColor: theme.card }]}>
+            <View style={styles.dispatchHeader}>
+              <View style={[styles.dispatchIconBox, { backgroundColor: 'rgba(255, 59, 48, 0.15)' }]}>
+                <Ionicons name="flash" size={20} color={theme.danger} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.dispatchTitle, { color: theme.text }]}>EMERGENCY DISPATCH</Text>
+                <Text style={[styles.dispatchSubtitle, { color: theme.subText }]}>Live Routing & Interception Active</Text>
+              </View>
+              <View style={[styles.liveIndicator, { backgroundColor: isTracking ? '#34C759' : '#8E8E93' }]}>
+                <Text style={styles.liveText}>{isTracking ? "LIVE" : "OFFLINE"}</Text>
+              </View>
+            </View>
 
-{routePoints.length > 0 && (
-  <TouchableOpacity
-    style={styles.stopNavBtn}
-    onPress={() => {
-      setRoutePoints([]);
-      setAltRoute([]);
-      setRouteAlert(null);
-    }}
-  >
-    <Text style={{ color: "#fff" }}>Stop Navigation</Text>
-  </TouchableOpacity>
-)}
+            <View style={styles.dispatchDivider} />
 
+            <View style={styles.dispatchActions}>
+              <TouchableOpacity
+                style={[styles.trackingToggleSmall, { backgroundColor: isTracking ? 'rgba(52, 199, 89, 0.1)' : 'rgba(255, 255, 255, 0.05)' }]}
+                onPress={toggleTracking}
+              >
+                <Ionicons name={isTracking ? "radio" : "radio-outline"} size={18} color={isTracking ? "#34C759" : theme.subText} />
+                <Text style={[styles.trackingToggleText, { color: isTracking ? "#34C759" : theme.subText }]}>
+                  {isTracking ? "Broadcasting" : "Tracking Off"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.endMissionBtn, { backgroundColor: theme.danger }]}
+                onPress={() => {
+                  setRoutePoints([]);
+                  setAltRoute([]);
+                  setRouteAlert(null);
+                }}
+              >
+                <Text style={styles.endMissionText}>End Mission</Text>
+                <Ionicons name="close-circle" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
 
       <SafeAreaView style={styles.overlay}>
-        <View style={styles.topBar}>
-          <View>
-            <Text style={styles.title}>Ambulance Mode</Text>
-            <Text style={styles.subtitle}>
-              {isTracking ? "📡 Broadcasting Live" : "⏸️ Tracking Paused"}
-            </Text>
+        <View style={[styles.header, { backgroundColor: theme.card }]}>
+          <View style={[styles.iconBox, { backgroundColor: theme.iconBg }]}>
+            <Ionicons name="medical" size={24} color={theme.primary} />
           </View>
-          <TouchableOpacity onPress={() => setShowSearch(!showSearch)}>
-  <Text style={{ color: "#fff", fontSize: 30 }}>🔍</Text>
-</TouchableOpacity>
-        </View>
-
-        {/* AI Voice Command */}
-        {showVoice && routePoints.length === 0 && (
-
-        <View style={styles.aiCommandContainer}>
-          <TextInput
-            style={styles.aiCommandInput}
-            placeholder="Say 'Start tracking'..."
-            placeholderTextColor="#888"
-            value={aiCommand}
-            onChangeText={setAiCommand}
-          />
-          <TouchableOpacity
-            style={styles.aiCommandButton}
-            onPress={handleAIVoiceCommand}
+          <View style={styles.headerText}>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>Ambulance Portal</Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: isTracking ? '#34C759' : '#8E8E93' }]} />
+              <Text style={[styles.headerSubtitle, { color: theme.subText }]}>
+                {isTracking ? "Vanguard Active" : "Tracking Paused"}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity 
+            onPress={() => {
+              setShowSearch(!showSearch);
+              if (showVoice) setShowVoice(false);
+            }} 
+            style={[styles.searchButton, showSearch && { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12 }]}
           >
-            <Text style={styles.buttonText}>Execute</Text>
+            <Ionicons name={showSearch ? "close" : "search"} size={22} color={theme.text} />
           </TouchableOpacity>
         </View>
+
+        {showVoice && routePoints.length === 0 && (
+          <View style={[styles.premiumCard, { backgroundColor: theme.card }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="mic-circle" size={24} color={theme.primary} />
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Voice Assistant</Text>
+            </View>
+            <View style={styles.inputRow}>
+              <TextInput
+                style={[styles.premiumInput, { color: theme.text }]}
+                placeholder="Say 'Start tracking'..."
+                placeholderTextColor={theme.subText}
+                value={aiCommand}
+                onChangeText={setAiCommand}
+              />
+              <TouchableOpacity
+                style={[styles.executeBtn, { backgroundColor: theme.primary }]}
+                onPress={handleAIVoiceCommand}
+              >
+                <Ionicons name="send" size={20} color="#000" />
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
 
-{showSearch && routePoints.length === 0 && (
-        <View style={styles.navContainer}>
-  <TextInput
-    placeholder="Enter Destination (e.g. Civil Hospital)"
-    placeholderTextColor="#888"
-    value={destination}
-    onChangeText={setDestination}
-    style={styles.navInput}
-  />
+        {showSearch && routePoints.length === 0 && (
+          <View style={[styles.premiumCard, { backgroundColor: theme.card }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="navigate-circle" size={24} color={theme.danger} />
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Destination Dispatch</Text>
+            </View>
+            <TextInput
+              placeholder="Enter Destination (e.g. Civil Hospital)"
+              placeholderTextColor={theme.subText}
+              value={destination}
+              onChangeText={setDestination}
+              style={[styles.premiumInputFull, { color: theme.text, borderBottomColor: theme.border }]}
+            />
+            <TouchableOpacity
+              style={[styles.premiumActionBtn, { backgroundColor: theme.danger }]}
+              onPress={handleNavigation}
+            >
+              <Text style={styles.actionBtnText}>Start Navigation</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-  <TouchableOpacity
-  style={styles.navButton}
-  onPress={handleNavigation}
->
-  <Text style={styles.buttonText}>Start Navigation</Text>
-</TouchableOpacity>
-</View>
-)}
-
-
-        {/* Tracking Toggle Button */}
-        <View style={styles.bottomContainer}>
-          <TouchableOpacity
-            style={[
-              styles.toggleButton,
-              isTracking ? styles.stopButton : styles.startButton,
-            ]}
-            onPress={toggleTracking}
-          >
-            <Text style={styles.toggleButtonText}>
-              {isTracking ? "Stop Tracking" : "Start Live Tracking"}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {routePoints.length === 0 && (
+          <View style={styles.bottomContainer}>
+            <TouchableOpacity
+              style={[
+                styles.toggleButton,
+                { backgroundColor: isTracking ? theme.danger : "#34C759" },
+              ]}
+              onPress={toggleTracking}
+            >
+              <Ionicons name={isTracking ? "stop" : "radio-outline"} size={22} color="#fff" />
+              <Text style={styles.toggleButtonText}>
+                {isTracking ? "Stop Tracking" : "Start Live Tracking"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </SafeAreaView>
+
       {routeAlert && (
-  <View style={styles.alertBox}>
+        <View style={styles.floatingAlertOverlay}>
+          <View style={[styles.alertCard, { backgroundColor: 'rgba(26, 29, 35, 0.95)' }]}>
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={() => setRouteAlert(null)}
+            >
+              <Ionicons name="close" size={24} color={theme.subText} />
+            </TouchableOpacity>
 
-    {/* ❌ CLOSE BUTTON */}
-    <TouchableOpacity
-      style={styles.closeBtn}
-      onPress={() => setRouteAlert(null)}
-    >
-      <Text style={{ color: "#fff", fontWeight: "bold" }}>✕</Text>
-    </TouchableOpacity>
+            <View style={styles.alertHeader}>
+              <View style={[styles.alertIconBox, { backgroundColor: routeAlert.type === "blockade" ? "rgba(255, 82, 71, 0.2)" : "rgba(52, 199, 89, 0.2)" }]}>
+                <Ionicons 
+                  name={routeAlert.type === "blockade" ? "warning" : "checkmark-circle"} 
+                  size={32} 
+                  color={routeAlert.type === "blockade" ? theme.danger : "#34C759"} 
+                />
+              </View>
+              <Text style={[styles.alertTitle, { color: theme.text }]}>
+                {routeAlert.type === "blockade" ? "Route Blocked" : "Route Clear"}
+              </Text>
+            </View>
 
-    <Text style={styles.alertTitle}>
-      {routeAlert.type === "blockade" ? "🚧 Route Blocked" : "✅ Route Clear"}
-    </Text>
+            {routeAlert.type === "blockade" && (
+              <View style={styles.alertDetails}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: theme.subText }]}>REASON:</Text>
+                  <Text style={[styles.detailValue, { color: theme.text }]}>{routeAlert.reason}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: theme.subText }]}>DURATION:</Text>
+                  <Text style={[styles.detailValue, { color: theme.text }]}>{routeAlert.days} Days</Text>
+                </View>
 
-    {routeAlert.type === "blockade" && (
-      <>
-        <Text style={styles.alertText}>
-          Reason: {routeAlert.reason}
-        </Text>
+                <TouchableOpacity
+                  style={[styles.premiumActionBtn, { backgroundColor: theme.danger, marginTop: 20 }]}
+                  onPress={() => {
+                    setRoutePoints(altRoute);
+                    setAltRoute([]);
+                    setRouteAlert(null);
+                  }}
+                >
+                  <Text style={styles.actionBtnText}>Use Alternative Route</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-        <Text style={styles.alertText}>
-          Days: {routeAlert.days}
-        </Text>
+            {routeAlert.type === "safe" && (
+              <View style={styles.alertDetails}>
+                <Text style={[styles.alertText, { color: theme.subText }]}>No blockages detected on this trajectory.</Text>
+                <TouchableOpacity
+                  style={[styles.premiumActionBtn, { backgroundColor: "#34C759", marginTop: 20 }]}
+                  onPress={() => setRouteAlert(null)}
+                >
+                  <Text style={styles.actionBtnText}>Proceed with Navigation</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
 
-        <TouchableOpacity
-          style={styles.altBtn}
-          onPress={() => {
-            setRoutePoints(altRoute);
-            setAltRoute([]);
-            setRouteAlert(null); // ✅ CLOSE
-          }}
-        >
-          <Text style={{ color: "#fff" }}>Use Alternative Route</Text>
-        </TouchableOpacity>
-      </>
-    )}
+      {/* 🤖 Premium centerAlert Overlays */}
+      {centerAlert && (
+        <View style={styles.centerOverlay}>
+          {centerAlert.title.toLowerCase().includes("error") || centerAlert.title.toLowerCase().includes("denied") || centerAlert.title.toLowerCase().includes("ready") ? (
+            <View style={styles.errorCard}>
+              <View style={styles.errorIconContainer}>
+                <View style={styles.errorIconCircle}>
+                  <MaterialCommunityIcons name="alert" size={30} color="#FFF" />
+                </View>
+              </View>
+              <View style={styles.errorContent}>
+                <Text style={styles.errorTitle}>SERVICE UNAVAILABLE</Text>
+                <Text style={styles.errorDescription}>{centerAlert.message}</Text>
+                <TouchableOpacity 
+                  style={styles.retryBtn}
+                  onPress={() => setCenterAlert(null)}
+                >
+                  <Text style={styles.retryBtnText}>RETRY</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : centerAlert.title.includes("AI Agent") ? (
+            <View style={styles.aiAgentCard}>
+              <View style={styles.aiIconWrapper}>
+                <View style={styles.aiIconCircle}>
+                  <MaterialCommunityIcons name="robot" size={32} color="#FFF" />
+                </View>
+              </View>
+              
+              <Text style={styles.aiAgentTitle}>AI Agent</Text>
+              
+              <View style={styles.aiMessageContainer}>
+                <Text style={styles.aiMessageText}>
+                  {"Understood. "}
+                  <Text style={{ fontWeight: 'bold', color: '#FFF' }}>
+                    {centerAlert.message.includes("Initiating") ? "Initiating" : "Terminating"}
+                  </Text>
+                  {centerAlert.message.split(centerAlert.message.includes("Initiating") ? "Initiating" : "Terminating")[1] || ""}
+                </Text>
+              </View>
 
-    {routeAlert.type === "safe" && (
-      <>
-        <Text style={styles.alertText}>No blockage detected</Text>
-
-        <TouchableOpacity
-          style={styles.altBtn}
-          onPress={() => setRouteAlert(null)}
-        >
-          <Text style={{ color: "#fff" }}>OK</Text>
-        </TouchableOpacity>
-      </>
-    )}
-
-  </View>
-)}
+              <TouchableOpacity 
+                style={styles.aiPrimaryBtn}
+                activeOpacity={0.8}
+                onPress={() => setCenterAlert(null)}
+              >
+                <Text style={styles.aiPrimaryBtnText}>Understood</Text>
+              </TouchableOpacity>
+              
+            </View>
+          ) : (
+            <View style={styles.alertCard}>
+               <Text style={[styles.alertTitle, { color: theme.text, textAlign: 'center' }]}>{centerAlert.title}</Text>
+               <Text style={[styles.alertText, { color: theme.subText, marginTop: 10 }]}>{centerAlert.message}</Text>
+               <TouchableOpacity 
+                style={[styles.premiumActionBtn, { backgroundColor: theme.primary, marginTop: 20 }]}
+                onPress={() => setCenterAlert(null)}
+               >
+                 <Text style={styles.actionBtnText}>OK</Text>
+               </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 };
 
-// ... keep your darkMapStyle JSON here ...
 const darkMapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+  { elementType: "geometry", stylers: [{ color: "#0F1217" }] },
   { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-  {
-    featureType: "administrative.locality",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#d59563" }],
-  },
-  {
-    featureType: "poi",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#d59563" }],
-  },
-  {
-    featureType: "poi.park",
-    elementType: "geometry",
-    stylers: [{ color: "#263c3f" }],
-  },
-  {
-    featureType: "poi.park",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#6b9a76" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry",
-    stylers: [{ color: "#38414e" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#212a37" }],
-  },
-  {
-    featureType: "road",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#9ca5b3" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry",
-    stylers: [{ color: "#746855" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#1f2835" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#f3d19c" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#17263c" }],
-  },
-  {
-    featureType: "water",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#515c6d" }],
-  },
-  {
-    featureType: "water",
-    elementType: "labels.text.stroke",
-    stylers: [{ color: "#17263c" }],
-  },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#0F1217" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#B0D1FF" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#718096" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#1A222F" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#6b9a76" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1A1D23" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8a8a8a" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2D3748" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0D1117" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
 ];
 
 const styles = StyleSheet.create({
@@ -585,44 +605,153 @@ const styles = StyleSheet.create({
     bottom: 20,
     pointerEvents: "box-none",
   },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor:"#655f5fff",
-    padding: 15,
-    paddingTop:0,
-    margin: 15,
-    marginTop:30,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#333",
+  headerOverlay: {
+    paddingHorizontal: 15,
+    marginTop: 10,
   },
-  title: { color: "#fff", fontSize: 22, fontWeight: "bold", marginTop:10},
-  subtitle: { color: "#aaa", fontSize: 14, marginTop: 4 },
-  logoutButton: { padding: 10, backgroundColor: "#333", borderRadius: 8 },
-  buttonText: { color: "#fff", fontWeight: "bold" },
-  bottomContainer: { position: "absolute", bottom: 20, left: 20, right: 20 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+    marginTop: 40,
+    marginHorizontal: 15,
+  },
+  iconBox: {
+    width: 45,
+    height: 45,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  headerText: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  searchButton: {
+    padding: 8,
+  },
+  premiumCard: {
+    margin: 15,
+    padding: 20,
+    borderRadius: 25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 20,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+    gap: 10,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    borderRadius: 15,
+    paddingHorizontal: 15,
+  },
+  premiumInput: {
+    flex: 1,
+    height: 50,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  premiumInputFull: {
+    height: 50,
+    fontSize: 16,
+    fontWeight: "600",
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 15,
+  },
+  executeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
+  },
+  premiumActionBtn: {
+    height: 55,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  actionBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  bottomContainer: { 
+    position: "absolute", 
+    bottom: 20, 
+    left: 20, 
+    right: 20 
+  },
   toggleButton: {
+    flexDirection: "row",
     padding: 18,
     borderRadius: 30,
     alignItems: "center",
+    justifyContent: "center",
     elevation: 5,
+    gap: 10,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowRadius: 15,
   },
-  startButton: { backgroundColor: "#34C759" }, // Green
-  stopButton: { backgroundColor: "#FF3B30" }, // Red
-  toggleButtonText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  toggleButtonText: { 
+    color: "#fff", 
+    fontSize: 18, 
+    fontWeight: "bold" 
+  },
   ambulanceMarker: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 2,
     shadowColor: "#000",
     shadowOpacity: 0.3,
     shadowRadius: 3,
@@ -632,7 +761,6 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: "#007AFF",
   },
   trafficLightPill: {
     width: 20,
@@ -642,7 +770,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#333",
   },
   trafficLightCircle: {
     width: 14,
@@ -661,126 +788,314 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 8,
   },
-  aiCommandContainer: {
-    backgroundColor: "rgba(18, 18, 18, 0.9)",
-    margin: 10,
-    padding: 15,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
+  closeBtn: {
+    position: "absolute",
+    top: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  floatingAlertOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    pointerEvents: 'box-none',
+    zIndex: 1000,
+  },
+  alertCard: {
+    width: '100%',
+    borderRadius: 30,
+    padding: 25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  aiCommandInput: {
-    flex: 1,
-    color: "#fff",
-    fontSize: 16,
+  alertHeader: {
+    alignItems: "center",
+    marginBottom: 20,
   },
-  aiCommandButton: {
-    backgroundColor: "#007AFF",
-    paddingVertical: 10,
-    paddingHorizontal: 15,
+  alertIconBox: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 15,
+  },
+  alertTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  alertDetails: {
+    gap: 12,
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  detailLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  detailValue: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  alertText: {
+    textAlign: "center",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  // Dispatch Card UI
+  dispatchOverlay: {
+    position: 'absolute',
+    bottom: 30,
+    left: 15,
+    right: 15,
+    zIndex: 100,
+  },
+  dispatchCard: {
+    borderRadius: 25,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 15,
+    elevation: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  dispatchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  dispatchIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dispatchTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  dispatchSubtitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  liveIndicator: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 8,
-    marginLeft: 10,
   },
-  navContainer: {
-  backgroundColor: "rgba(18,18,18,0.95)",
-  marginHorizontal: 10,
-  marginTop: 10,
-  padding: 15,
-  borderRadius: 12,
-  borderWidth: 1,
-  borderColor: "#333",
-},
-
-navInput: {
-  color: "#fff",
-  borderBottomWidth: 1,
-  borderColor: "#555",
-  marginBottom: 10,
-},
-
-navButton: {
-  backgroundColor: "#FF3B30",
-  padding: 12,
-  borderRadius: 10,
-  alignItems: "center",
-},
-alertBox: {
-  position: "absolute",
-  top: "30%",
-  left: 20,
-  right: 20,
-  backgroundColor: "#1c1c1e",
-  padding: 20,
-  borderRadius: 15,
-  borderWidth: 1,
-  borderColor: "#333",
-  zIndex: 20,
-  elevation: 20,
-},
-
-alertTitle: {
-  color: "#fff",
-  fontSize: 18,
-  fontWeight: "bold",
-  marginBottom: 10,
-  textAlign: "center",
-},
-
-alertText: {
-  color: "#ccc",
-  textAlign: "center",
-  marginBottom: 10,
-},
-
-altBtn: {
-  backgroundColor: "#FF3B30",
-  padding: 12,
-  borderRadius: 10,
-  alignItems: "center",
-},
-closeBtn: {
-  position: "absolute",
-  top: 10,
-  right: 10,
-  zIndex: 10,
-},
-routeStatus: {
-  position: "absolute",
-  bottom: 120,
-  alignSelf: "center",
-  backgroundColor: "#7575baff",
-  paddingHorizontal: 15,
-  paddingVertical: 8,
-  borderRadius: 20,
-  borderWidth: 1,
-  borderColor: "#333",
-},
-stopNavBtn: {
-  position: "absolute",
-  top:130,
-  alignSelf: "center",
-  backgroundColor: "#FF3B30",
-  paddingHorizontal: 20,
-  paddingVertical: 10,
-  borderRadius: 20,
-  zIndex: 20,
-},
-voiceFab: {
-  position: "absolute",
-  bottom: 140,
-  right: 20,
-  backgroundColor: "#7575baff",
-  width: 55,
-  height: 55,
-  borderRadius: 30,
-  justifyContent: "center",
-  alignItems: "center",
-  elevation: 10,
-  zIndex: 10,
-},
+  liveText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  dispatchDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginVertical: 18,
+  },
+  dispatchActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  trackingToggleSmall: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+    borderRadius: 15,
+    gap: 8,
+  },
+  trackingToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  endMissionBtn: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+    borderRadius: 15,
+    gap: 8,
+    shadowColor: "#FF3B30",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  endMissionText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  voiceFab: {
+    position: "absolute",
+    bottom: 110,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 10,
+    zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  // --- PREMIUM OVERLAY STYLES ---
+  centerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 2000,
+    padding: 20,
+  },
+  errorCard: {
+    backgroundColor: "#2C1B1B",
+    width: "95%",
+    borderRadius: 32,
+    padding: 24,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderWidth: 1,
+    borderColor: "rgba(255, 77, 77, 0.1)",
+  },
+  errorIconContainer: { marginRight: 16 },
+  errorIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#FF3B30",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  errorContent: { flex: 1 },
+  errorTitle: {
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  errorDescription: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  retryBtn: {
+    backgroundColor: "#E32F2F",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    alignSelf: "flex-start",
+  },
+  retryBtnText: {
+    color: "#FFF",
+    fontWeight: "800",
+    fontSize: 13,
+    letterSpacing: 1,
+  },
+  aiAgentCard: {
+    backgroundColor: "#1A1D23",
+    width: "90%",
+    borderRadius: 36,
+    padding: 30,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.6,
+    shadowRadius: 25,
+    elevation: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  aiIconWrapper: {
+    marginBottom: 20,
+    shadowColor: "#007AFF",
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+  },
+  aiIconCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "#2C3E50",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(93, 156, 255, 0.3)",
+  },
+  aiAgentTitle: {
+    color: "#FFF",
+    fontSize: 26,
+    fontWeight: "900",
+    marginBottom: 20,
+  },
+  aiMessageContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 30,
+    width: "100%",
+  },
+  aiMessageText: {
+    color: "#E5E5E5",
+    fontSize: 16,
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  aiPrimaryBtn: {
+    backgroundColor: "#007AFF",
+    width: "100%",
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+    shadowColor: "#007AFF",
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  aiPrimaryBtnText: {
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  aiBottomTagline: {
+    color: "#8E8E93",
+    fontSize: 10,
+    fontWeight: "bold",
+    letterSpacing: 2,
+    marginTop: 10,
+  },
 });
-
 
 export default AmbulanceMap;

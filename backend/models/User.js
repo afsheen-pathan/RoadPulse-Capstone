@@ -18,6 +18,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['Ambulance', 'Contractor', 'Citizen', 'Admin'],
         required: true
+    },
+    profilePicture: {
+        type: String, // Base64 or local path for now
+        default: ''
     }
 }, { timestamps: true });
 

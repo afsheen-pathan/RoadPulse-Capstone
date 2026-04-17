@@ -3,24 +3,50 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AmbulanceMap from './AmbulanceMap';
 import ProfileScreen from './ProfileScreen';
 import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
 export default function AmbulanceTabs() {
+  const { theme } = useTheme();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#00FF00',
-        tabBarStyle: { backgroundColor: '#1c1c1e' },
+        tabBarActiveTintColor: '#000',
+        tabBarInactiveTintColor: theme.subText,
+        tabBarStyle: { 
+          backgroundColor: theme.background, 
+          borderTopWidth: 0,
+          elevation: 0,
+          height: 55,
+          paddingBottom: 10,
+          paddingTop: 5,
+        },
+        tabBarShowLabel: false,
 
-        tabBarIcon: ({ color, size }) => {
+        tabBarIcon: ({ focused, color, size }) => {
           const icon =
             route.name === 'Map'
-              ? 'medkit-outline'
-              : 'person-outline';
+              ? (focused ? 'map' : 'map-outline')
+              : (focused ? 'person' : 'person-outline');
 
-          return <Ionicons name={icon} size={size} color={color} />;
+          return (
+            <View style={[
+              styles.tabItem, 
+              focused && { backgroundColor: theme.primary }
+            ]}>
+              <Ionicons name={icon} size={24} color={focused ? '#000' : theme.subText} />
+              <Text style={[
+                styles.tabLabel, 
+                { color: focused ? '#000' : theme.subText }
+              ]}>
+                {route.name.toUpperCase()}
+              </Text>
+            </View>
+          );
         },
       })}
     >
@@ -29,3 +55,20 @@ export default function AmbulanceTabs() {
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  tabItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 25,
+    borderRadius: 20,
+    width: 100,
+    height: 50,
+  },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 4,
+  }
+});
