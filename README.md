@@ -53,6 +53,41 @@ RoadPulse is an intelligent real-time navigation system designed to improve coor
 
 ---
 
+## 📸 Screenshots
+
+### 🗺️ Citizen Map
+![Citizen Map](assets/screenshots/citizen-map.jpeg)
+
+### 🌊 Report Water Logging
+![Water Report](assets/screenshots/citizen-report-water-logging.jpeg)
+
+### ⚠️ Water Logged Alert
+![Water Alert](assets/screenshots/water-logged-alert.jpeg)
+
+### 🌊 Flood Visualization on Map
+![Flood Map](assets/screenshots/water-logged-on-map.jpeg)
+
+### 🚧 Contractor Roadblock Reporting
+![Roadblock](assets/screenshots/contractor-reporting-roadblock.jpeg)
+
+### 📍 Blockage Details
+![Blockage Details](assets/screenshots/reporting-details.jpeg)
+
+### 🚧 Roadblock on Map
+![Blockage Map](assets/screenshots/blockage-on-map.jpeg)
+
+### 🚑 Ambulance Tracking
+![Ambulance](assets/screenshots/ambulance-map.jpeg)
+
+### ▶️ Start Tracking
+![Tracking](assets/screenshots/tracking-start.jpeg)
+
+### 🚨 Citizen Alert for Ambulance
+![Alert](assets/screenshots/citizen-ambulance-alert.jpeg)
+
+---
+
+
 ## 📱 Use Case
 
 - Emergency vehicles get priority movement through traffic.
