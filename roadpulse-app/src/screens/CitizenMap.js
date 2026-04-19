@@ -20,6 +20,7 @@ import * as Location from "expo-location";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../context/ThemeContext";
+import { Polyline } from "react-native-maps";
 
 const API_URL = "http://10.42.96.103:5000";
 
@@ -48,6 +49,8 @@ const CitizenMap = ({ navigation }) => {
   const [ambulanceLocation, setAmbulanceLocation] = useState(null); // <-- NEW STATE
   const [intersections, setIntersections] = useState([]); // <-- NEW STATE
   const [uiAlert, setUiAlert] = useState(null);
+  const [routePoints, setRoutePoints] = useState([]);
+  const [altRoutePoints, setAltRoutePoints] = useState([]);
 
   const showCenterAlert = (title, message, actions = [], metadata = {}) => {
     setCenterAlert({ title, message, actions, metadata });
@@ -119,21 +122,19 @@ const CitizenMap = ({ navigation }) => {
             console.log(`[ECO-DRIVE] Current Speed: ${currentSpeed} m/s`);
 
             if (currentSpeed < 0.5) {
-  if (idleTimerRef.current === null) {
-    console.log("⏱️ Vehicle stopped. Starting Eco-Timer...");
+              if (idleTimerRef.current === null) {
+                console.log("⏱️ Vehicle stopped. Starting Eco-Timer...");
 
-    idleTimerRef.current = setTimeout(() => {
-      
-      idleTimerRef.current = null;
+                idleTimerRef.current = setTimeout(() => {
+                  idleTimerRef.current = null;
 
-      showCenterAlert(
-        "🌱 Eco-Drive Alert",
-        "You have been idling for 2 minutes. Please turn off your engine to reduce emissions and save fuel."
-      );
-
-    }, 120000);
-  }
-} else {
+                  showCenterAlert(
+                    "🌱 Eco-Drive Alert",
+                    "You have been idling for 2 minutes. Please turn off your engine to reduce emissions and save fuel.",
+                  );
+                }, 120000);
+              }
+            } else {
               if (idleTimerRef.current !== null) {
                 console.log("🚗 Vehicle moving. Canceling Eco-Timer.");
                 clearTimeout(idleTimerRef.current);
@@ -283,8 +284,10 @@ const CitizenMap = ({ navigation }) => {
       );
 
       if (dist < 500) {
-        console.log(`[RADAR] Hazard in range! Dist: ${dist}m, Depth: ${report.depth}, ID: ${report._id}`);
-        
+        console.log(
+          `[RADAR] Hazard in range! Dist: ${dist}m, Depth: ${report.depth}, ID: ${report._id}`,
+        );
+
         // Only show global pill for critical hazards
         if (report.depth === "Knee" || report.depth === "Waist") {
           triggeredAlert = `🌊 HAZARD: Severe Waterlogging Ahead (${Math.round(dist)}m)`;
@@ -292,7 +295,9 @@ const CitizenMap = ({ navigation }) => {
 
         // --- Task 14: Proximity Ping Logic ---
         if (!promptedHazards.current.has(report._id) && !justReported) {
-          console.log(`[RADAR] Prompting for status update for hazard: ${report._id}`);
+          console.log(
+            `[RADAR] Prompting for status update for hazard: ${report._id}`,
+          );
           promptedHazards.current.add(report._id);
           showCenterAlert(
             "🌊 Waterlogging Detected",
@@ -349,13 +354,18 @@ const CitizenMap = ({ navigation }) => {
     }
 
     if (triggeredAlert && triggeredAlert !== activeHazardAlert) {
-      const type = triggeredAlert.includes("Waterlogging") ? "waterlogging" : "blockade";
+      const type = triggeredAlert.includes("Waterlogging")
+        ? "waterlogging"
+        : "blockade";
       const now = Date.now();
 
       if (now - hazardCooldowns.current[type] > 60000) {
         setActiveHazardAlert(triggeredAlert);
         // 🚨 Auto-close hazard alerts after 10 seconds (for both blockades and floods)
-        if (triggeredAlert.includes("Blockade") || triggeredAlert.includes("Waterlogging")) {
+        if (
+          triggeredAlert.includes("Blockade") ||
+          triggeredAlert.includes("Waterlogging")
+        ) {
           setTimeout(() => {
             hazardCooldowns.current[type] = Date.now(); // 🚨 Mark dismissal time
             setActiveHazardAlert(null);
@@ -414,17 +424,42 @@ const CitizenMap = ({ navigation }) => {
     setSelectedCoordinate(null);
   };
 
-  // --- Task 15: ZERO-API Headless Routing & Collision Engine ---
+  const fetchOSRMRoute = async (start, end) => {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson&alternatives=true`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.code !== "Ok") return null;
+
+      const primary = data.routes[0].geometry.coordinates.map(([lng, lat]) => ({
+        latitude: lat,
+        longitude: lng,
+      }));
+
+      const alternative = data.routes[1]
+        ? data.routes[1].geometry.coordinates.map(([lng, lat]) => ({
+            latitude: lat,
+            longitude: lng,
+          }))
+        : null;
+
+      return { primary, alternative };
+    } catch (err) {
+      console.log("OSRM failed:", err);
+      return null;
+    }
+  };
+
   const handleSearch = async () => {
     if (!searchQuery.trim() || !currentLocation) return;
     Keyboard.dismiss();
 
     try {
-      // 1. Hyper-Local Text Enhancer
       let optimizedQuery = searchQuery;
       const lowerQuery = optimizedQuery.toLowerCase();
 
-      // If they just typed a place name (e.g., "Himalaya Mall"), force Ahmedabad context
       if (!lowerQuery.includes("ahmedabad")) {
         optimizedQuery = `${searchQuery}, Ahmedabad, Gujarat, India`;
       } else if (!lowerQuery.includes("india")) {
@@ -453,111 +488,146 @@ const CitizenMap = ({ navigation }) => {
           `[ROUTING] Generating simulated algorithmic path to ${displayName}...`,
         );
 
-        // 2. Simulated Routing Math (Interpolate 20 points between Citizen and Destination)
-        const waypoints = [];
-        const numPoints = 20;
-        for (let i = 0; i <= numPoints; i++) {
-          waypoints.push({
-            lat:
-              currentLocation.latitude +
-              (destLat - currentLocation.latitude) * (i / numPoints),
-            lng:
-              currentLocation.longitude +
-              (destLng - currentLocation.longitude) * (i / numPoints),
-          });
+        console.log("🧠 Using OSRM for citizen routing");
+
+        const routes = await fetchOSRMRoute(currentLocation, {
+          latitude: destLat,
+          longitude: destLng,
+        });
+
+        if (!routes) {
+          showCenterAlert("Error", "Could not calculate route");
+          return;
         }
+
+        const { primary, alternative } = routes;
 
         let hazardFound = false;
         let hazardType = "";
-        let foundBlockade = null; // ✅ ADD THIS
+        let foundBlockade = null;
+        let foundHydro = null;
 
-        // 3. The Collision Engine (Checking your generated path against the database)
-        for (const point of waypoints) {
-          // Check active Floods
+        // 🔍 CHECK PRIMARY ROUTE FOR HAZARDS
+        for (const point of primary) {
+          // 🌊 WATER HAZARDS
           for (const report of hydroReports) {
-            if (report.depth === "Knee" || report.depth === "Waist") {
-              const dist = calculateDistance(
-                point.lat,
-                point.lng,
-                report.location.coordinates[1],
-                report.location.coordinates[0],
-              );
-              if (dist < 300) {
-                // 300m collision radius for the simulation
-                hazardFound = true;
-                hazardType = `🌊 Severe Waterlogging (${report.depth} Deep)`;
-                break;
-              }
-            }
-          }
-          if (hazardFound) break;
+            const hydroLat = report.location?.coordinates?.[1];
+            const hydroLng = report.location?.coordinates?.[0];
 
-          // Check active Blockades
-          for (const blockade of blockades) {
+            if (!hydroLat || !hydroLng) continue;
+
             const dist = calculateDistance(
-              point.lat,
-              point.lng,
-              blockade.location.coordinates[0][0][1],
-              blockade.location.coordinates[0][0][0],
+              point.latitude,
+              point.longitude,
+              hydroLat,
+              hydroLng,
             );
-            if (dist < 300) {
+
+            if (dist < 150) {
+              // realistic detection
               hazardFound = true;
-              hazardType = `🚧 ${blockade.reason} (${blockade.days} days)`;
-              foundBlockade = blockade; // ✅ STORE IT
+              foundHydro = report;
+              hazardType = "water";
               break;
             }
           }
+
+          if (hazardFound) break;
+
+          // 🚧 BLOCKADES
+          for (const blockade of blockades) {
+            const bLat = blockade.location.coordinates[0][0][1];
+            const bLng = blockade.location.coordinates[0][0][0];
+
+            const dist = calculateDistance(
+              point.latitude,
+              point.longitude,
+              bLat,
+              bLng,
+            );
+
+            if (dist < 150) {
+              hazardFound = true;
+              foundBlockade = blockade;
+              hazardType = "blockade";
+              break;
+            }
+          }
+
           if (hazardFound) break;
         }
 
-        // 4. The Final Verdict Native Alert
-        if (hazardFound) {
-          if (hazardType.includes("Waterlogging")) {
-            let time = "Unknown";
+        // 🎯 FINAL DECISION (ROUTING + UI)
 
-            if (hazardType.includes("Ankle")) time = "45 minutes";
-            if (hazardType.includes("Knee")) time = "3 hours";
-            if (hazardType.includes("Waist")) time = "6 hours";
+        if (!hazardFound) {
+          console.log("🟢 Route SAFE");
 
-            showCenterAlert(
-              "🌊 Water Logging Detected",
-              `Type: ${hazardType}\nClearance: ${time}`,
-            );
-          } else {
-            showCenterAlert(
-              "🚧 Road Blocked",
-              `Reason: ${foundBlockade?.reason || "Unknown"}\nClearance: ${foundBlockade?.days || "?"} days`,
-            );
-          }
-        } else {
+          setRoutePoints(primary);
+          setAltRoutePoints([]);
+
           setUiAlert({
             title: "Route Clear",
             message: `No hazards detected towards ${displayName}`,
-            type: "ROUTE_CLEAR"
+            type: "ROUTE_CLEAR",
           });
+        } else {
+          console.log("🚧 Route BLOCKED");
+
+          // 🌊 WATER ALERT
+          if (hazardType === "water" && foundHydro) {
+            let time = "Unknown";
+
+            if (foundHydro.depth === "Ankle") time = "45 minutes";
+            if (foundHydro.depth === "Knee") time = "3 hours";
+            if (foundHydro.depth === "Waist") time = "6 hours";
+
+            showCenterAlert(
+              "🌊 Water Logging Detected",
+              `Depth: ${foundHydro.depth}\nClearance: ${time}`,
+            );
+          }
+          // 🚧 BLOCKADE ALERT
+          else if (hazardType === "blockade" && foundBlockade) {
+            showCenterAlert(
+              "🚧 Road Blocked",
+              `Reason: ${foundBlockade.reason}\nClearance: ${foundBlockade.days} days`,
+            );
+          }
+
+          // 🔁 ROUTING DECISION
+          if (alternative) {
+            console.log("🔁 Alternative route available");
+
+            setRoutePoints(primary); // show blocked route first
+            setAltRoutePoints(alternative); // show alt route (orange)
+          } else {
+            console.log("❌ No alternative route");
+
+            setRoutePoints(primary);
+            setAltRoutePoints([]);
+          }
         }
+
         setSearchQuery("");
       } else {
         showCenterAlert(
           "📍 Location Not Found",
-          "Could not find that exact location in Ahmedabad. Try using a nearby landmark or spelling out the full name.",
+          "Could not find that exact location in Ahmedabad. Try using a nearby landmark.",
         );
       }
     } catch (error) {
       console.error("[OPEN-SOURCE ENGINE ERROR]", error.message);
-      showCenterAlert(
-        "Network Error",
-        "Could not reach the open-source routing servers.",
-      );
+
+      showCenterAlert("Network Error", "Could not reach the routing servers.");
     }
-  };
+  }; 
 
   const handleAICommand = async () => {
     if (!aiText.trim() || !currentLocation) return;
 
     try {
       console.log("🧠 Sending to Gemini...");
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.EXPO_PUBLIC_GEMINI_API_KEY}`;
 
       const promptText = `You are a hazard parsing AI. The user will report a flood. Extract the depth as either 'Ankle', 'Knee', or 'Waist'. If unsure, default to 'Ankle'. Return strictly valid JSON with a single key 'depth'. Example: {"depth": "Waist"}. User text: ${aiText}`;
 
@@ -598,7 +668,12 @@ const CitizenMap = ({ navigation }) => {
           "🤖 AI Agent",
           `Hazard recognized. ${parsedData.depth}-deep flood reported at your location.`,
           [],
-          { coords: { latitude: currentLocation.latitude, longitude: currentLocation.longitude } }
+          {
+            coords: {
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+            },
+          },
         );
         // 🚨 Suppression Flag: Prevent instant verification prompt
         setJustReported(true);
@@ -610,7 +685,7 @@ const CitizenMap = ({ navigation }) => {
       setUiAlert({
         title: "AI Error",
         message: "AI service temporarily unavailable",
-        type: "AI_ERROR"
+        type: "AI_ERROR",
       });
     }
   };
@@ -705,7 +780,21 @@ const CitizenMap = ({ navigation }) => {
           </Marker>
         ))}
 
-        {/* --- Simulated Routing Math for Hazard Detection is handled in handleSearch --- */}
+        {routePoints.length > 0 && (
+          <Polyline
+            coordinates={routePoints}
+            strokeColor="#007bff"
+            strokeWidth={4}
+          />
+        )}
+
+        {altRoutePoints.length > 0 && (
+          <Polyline
+            coordinates={altRoutePoints}
+            strokeColor="#ff9900"
+            strokeWidth={4}
+          />
+        )}
       </MapView>
       {centerAlert && (
         <View style={styles.centerOverlay}>
@@ -719,40 +808,51 @@ const CitizenMap = ({ navigation }) => {
               </View>
               <View style={styles.errorContent}>
                 <Text style={styles.errorTitle}>SERVICE UNAVAILABLE</Text>
-                <Text style={styles.errorDescription}>{centerAlert.message}</Text>
-                <TouchableOpacity 
+                <Text style={styles.errorDescription}>
+                  {centerAlert.message}
+                </Text>
+                <TouchableOpacity
                   style={styles.retryBtn}
-                  onPress={() => setCenterAlert(null)}
+                  onPress={() => {
+                    if (altRoutePoints.length > 0) {
+                      setRoutePoints(altRoutePoints);
+                      setAltRoutePoints([]);
+                    }
+                    setCenterAlert(null);
+                  }}
                 >
                   <Text style={styles.retryBtnText}>RETRY</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          ) : (centerAlert.title.includes("AI Agent")) ? (
+          ) : centerAlert.title.includes("AI Agent") ? (
             <View style={styles.aiAgentCard}>
               <View style={styles.aiIconWrapper}>
                 <View style={styles.aiIconCircle}>
                   <MaterialCommunityIcons name="robot" size={32} color="#FFF" />
                 </View>
               </View>
-              
+
               <Text style={styles.aiAgentTitle}>AI Agent</Text>
-              
+
               <View style={styles.aiMessageContainer}>
                 <Text style={styles.aiMessageText}>
                   {"Hazard recognized. "}
-                  <Text style={{ fontWeight: 'bold', color: '#FFF' }}>
+                  <Text style={{ fontWeight: "bold", color: "#FFF" }}>
                     {centerAlert.message.match(/(\w+)-deep/)?.[0] || ""}
                   </Text>
-                  {centerAlert.message.split(centerAlert.message.match(/(\w+)-deep/)?.[0] || "")[1] || ""}
+                  {centerAlert.message.split(
+                    centerAlert.message.match(/(\w+)-deep/)?.[0] || "",
+                  )[1] || ""}
                 </Text>
               </View>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.aiPrimaryBtn}
                 activeOpacity={0.8}
                 onPress={() => {
-                  const targetCoords = centerAlert.metadata?.coords || currentLocation;
+                  const targetCoords =
+                    centerAlert.metadata?.coords || currentLocation;
                   if (targetCoords) {
                     setMapRegion({
                       latitude: targetCoords.latitude,
@@ -768,7 +868,7 @@ const CitizenMap = ({ navigation }) => {
                 <Text style={styles.aiPrimaryBtnText}>View on Map</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.aiSecondaryBtn}
                 onPress={() => setCenterAlert(null)}
               >
@@ -777,23 +877,39 @@ const CitizenMap = ({ navigation }) => {
 
               <Text style={styles.aiBottomTagline}>ACTIVE FLOOD ZONE</Text>
             </View>
-          ) : (centerAlert.title.includes("Road Blocked") || centerAlert.title.includes("Blockade") || centerAlert.title.includes("Water Logging")) ? (
+          ) : centerAlert.title.includes("Road Blocked") ||
+            centerAlert.title.includes("Blockade") ||
+            centerAlert.title.includes("Water Logging") ? (
             <View style={styles.blockadeCard}>
               <View style={styles.blockadeHeader}>
-                <View style={[
-                  styles.blockadeIconBox, 
-                  (centerAlert.title.includes("Water")) && { backgroundColor: "#1A3A5F" }
-                ]}>
-                  <MaterialCommunityIcons 
-                    name={centerAlert.title.includes("Water") ? "waves" : "hammer-wrench"} 
-                    size={28} 
-                    color={centerAlert.title.includes("Water") ? "#5D9CFF" : "#FF6B6B"} 
+                <View
+                  style={[
+                    styles.blockadeIconBox,
+                    centerAlert.title.includes("Water") && {
+                      backgroundColor: "#1A3A5F",
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={
+                      centerAlert.title.includes("Water")
+                        ? "waves"
+                        : "hammer-wrench"
+                    }
+                    size={28}
+                    color={
+                      centerAlert.title.includes("Water")
+                        ? "#5D9CFF"
+                        : "#FF6B6B"
+                    }
                   />
                 </View>
                 <View style={styles.blockadeHeaderText}>
                   <Text style={styles.blockadeTagline}>CONTEXTUAL ALERT</Text>
                   <Text style={styles.blockadeTitle}>
-                    {centerAlert.title.includes("Water") ? "Waterlogging" : "Road Blocked"}
+                    {centerAlert.title.includes("Water")
+                      ? "Waterlogging"
+                      : "Road Blocked"}
                   </Text>
                 </View>
               </View>
@@ -801,43 +917,57 @@ const CitizenMap = ({ navigation }) => {
               <View style={styles.blockadeSection}>
                 <Text style={styles.blockadeLabel}>REASON</Text>
                 <Text style={styles.blockadeValue}>
-                  {centerAlert.message.split('\n')[0].split(': ')[1] || "Unknown hazard"}
+                  {centerAlert.message.split("\n")[0].split(": ")[1] ||
+                    "Unknown hazard"}
                 </Text>
               </View>
 
               <View style={styles.clearanceCapsule}>
-                <MaterialCommunityIcons name="timer-outline" size={18} color="#8E8E93" />
+                <MaterialCommunityIcons
+                  name="timer-outline"
+                  size={18}
+                  color="#8E8E93"
+                />
                 <View style={{ marginLeft: 8 }}>
                   <Text style={styles.clearanceLabel}>EST. CLEARANCE</Text>
                   <Text style={styles.clearanceValue}>
-                    {centerAlert.message.split('\n')[1]?.split(': ')[1] || "Unknown"}
+                    {centerAlert.message.split("\n")[1]?.split(": ")[1] ||
+                      "Unknown"}
                   </Text>
                 </View>
               </View>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.alternateRouteBtn}
                 onPress={() => setCenterAlert(null)}
               >
-                <Text style={styles.alternateRouteBtnText}>View Alternate Route</Text>
+                <Text style={styles.alternateRouteBtnText}>
+                  View Alternate Route
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.dismissTextBtn}
                 onPress={() => setCenterAlert(null)}
               >
                 <Text style={styles.dismissText}>Dismiss</Text>
               </TouchableOpacity>
             </View>
-          ) : (centerAlert.title.includes("Waterlogging")) ? (
+          ) : centerAlert.title.includes("Waterlogging") ? (
             <View style={styles.hazardCard}>
               <View style={styles.hazardHeader}>
                 <View style={styles.hazardIconBox}>
-                  <MaterialCommunityIcons name="waves" size={32} color="#5D9CFF" />
+                  <MaterialCommunityIcons
+                    name="waves"
+                    size={32}
+                    color="#5D9CFF"
+                  />
                 </View>
                 <View style={styles.hazardTextContainer}>
                   <Text style={styles.hazardTitle}>Waterlogging Detected</Text>
-                  <Text style={styles.hazardSubtitle}>{centerAlert.message}</Text>
+                  <Text style={styles.hazardSubtitle}>
+                    {centerAlert.message}
+                  </Text>
                 </View>
               </View>
 
@@ -847,7 +977,9 @@ const CitizenMap = ({ navigation }) => {
                     key={i}
                     style={[
                       styles.hazardBtn,
-                      btn.text === "Yes" ? styles.hazardBtnYes : styles.hazardBtnNo
+                      btn.text === "Yes"
+                        ? styles.hazardBtnYes
+                        : styles.hazardBtnNo,
                     ]}
                     onPress={btn.onPress}
                   >
@@ -905,13 +1037,17 @@ const CitizenMap = ({ navigation }) => {
       <View style={styles.alertStackContainer}>
         {/* 1. Route Clear Toast */}
         {uiAlert && uiAlert.type === "ROUTE_CLEAR" && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.routeClearToastStack}
             activeOpacity={0.8}
             onPress={() => setUiAlert(null)}
           >
             <View style={styles.toastIconCircle}>
-              <MaterialCommunityIcons name="check-circle" size={24} color="#2ecc71" />
+              <MaterialCommunityIcons
+                name="check-circle"
+                size={24}
+                color="#2ecc71"
+              />
             </View>
             <View style={styles.toastTextContent}>
               <Text style={styles.toastTitleText}>{uiAlert.title}</Text>
@@ -922,30 +1058,41 @@ const CitizenMap = ({ navigation }) => {
 
         {/* 2. Orange Blockade Alert */}
         {activeHazardAlert && activeHazardAlert.includes("Blockade") && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.blockadePill}
             onPress={() => {
               hazardCooldowns.current.blockade = Date.now(); // 🚨 Record manual dismissal
               setActiveHazardAlert(null);
             }}
           >
-            <Text style={styles.blockadeText}>{activeHazardAlert.replace("🚧 HAZARD: ", "")}</Text>
+            <Text style={styles.blockadeText}>
+              {activeHazardAlert.replace("🚧 HAZARD: ", "")}
+            </Text>
           </TouchableOpacity>
         )}
 
         {/* 3. Red/Pink Hazard Alert (Waterlogging) */}
         {activeHazardAlert && activeHazardAlert.includes("Waterlogging") && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.hazardPillPremium}
             onPress={() => {
               hazardCooldowns.current.waterlogging = Date.now(); // 🚨 Record manual dismissal
               setActiveHazardAlert(null);
             }}
           >
-            <MaterialCommunityIcons name="waves" size={30} color="#700F0A" style={{ marginLeft: 5 }} />
+            <MaterialCommunityIcons
+              name="waves"
+              size={30}
+              color="#700F0A"
+              style={{ marginLeft: 5 }}
+            />
             <View style={styles.hazardPillTextContainer}>
-              <Text style={styles.hazardPillTitle}>Severe Waterlogging Ahead</Text>
-              <Text style={styles.hazardPillSubtitle}>FLASH FLOOD WARNING • CURRENT ROUTE</Text>
+              <Text style={styles.hazardPillTitle}>
+                Severe Waterlogging Ahead
+              </Text>
+              <Text style={styles.hazardPillSubtitle}>
+                FLASH FLOOD WARNING • CURRENT ROUTE
+              </Text>
             </View>
             <View style={styles.hazardDistanceStack}>
               <Text style={styles.hazardDistanceText}>
@@ -957,12 +1104,17 @@ const CitizenMap = ({ navigation }) => {
 
         {/* 4. AI Error Toast */}
         {uiAlert && uiAlert.type === "AI_ERROR" && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.aiErrorToast}
             onPress={() => setUiAlert(null)}
           >
             <View style={styles.aiErrorAccent} />
-            <MaterialCommunityIcons name="alert" size={20} color="#FF4D4D" style={{ marginHorizontal: 12 }} />
+            <MaterialCommunityIcons
+              name="alert"
+              size={20}
+              color="#FF4D4D"
+              style={{ marginHorizontal: 12 }}
+            />
             <Text style={styles.aiErrorText}>{uiAlert.message}</Text>
           </TouchableOpacity>
         )}
@@ -1068,15 +1220,17 @@ const CitizenMap = ({ navigation }) => {
               </View>
             </View>
             <View style={styles.vanguardTextContent}>
-              <Text style={styles.vanguardTitle}>AMBULANCE {` \n`}APPROACHING</Text>
+              <Text style={styles.vanguardTitle}>
+                AMBULANCE {` \n`}APPROACHING
+              </Text>
               <Text style={styles.vanguardDistance}>
-                Yield immediately • {" "}
-                <Text style={{fontWeight: '900', color: '#FFF'}}>
-                  {ambulanceLocation && currentLocation 
-                    ? `${Math.round(calculateDistance(currentLocation.latitude, currentLocation.longitude, ambulanceLocation.latitude, ambulanceLocation.longitude))}m` 
+                Yield immediately •{" "}
+                <Text style={{ fontWeight: "900", color: "#FFF" }}>
+                  {ambulanceLocation && currentLocation
+                    ? `${Math.round(calculateDistance(currentLocation.latitude, currentLocation.longitude, ambulanceLocation.latitude, ambulanceLocation.longitude))}m`
                     : "Nearby"}
-                </Text> 
-                {" "}away
+                </Text>{" "}
+                away
               </Text>
             </View>
           </View>
@@ -1091,22 +1245,36 @@ const CitizenMap = ({ navigation }) => {
                   <Text style={styles.liveAlertText}>LIVE ALERT</Text>
                 </View>
               </View>
-              <Text style={styles.protocolSubtitle}>Critical instructions for current route</Text>
+              <Text style={styles.protocolSubtitle}>
+                Critical instructions for current route
+              </Text>
             </View>
 
             <View style={styles.protocolGrid}>
               <View style={styles.protocolTile}>
                 <View style={styles.protocolIconCircle}>
-                  <MaterialCommunityIcons name="arrow-bottom-left-thick" size={24} color="#A5C8FF" />
+                  <MaterialCommunityIcons
+                    name="arrow-bottom-left-thick"
+                    size={24}
+                    color="#A5C8FF"
+                  />
                 </View>
-                <Text style={styles.protocolTileText}>Move to{` \n`}left lane</Text>
+                <Text style={styles.protocolTileText}>
+                  Move to{` \n`}left lane
+                </Text>
               </View>
 
               <View style={styles.protocolTile}>
                 <View style={styles.protocolIconCircle}>
-                  <MaterialCommunityIcons name="close-circle" size={24} color="#FF6B6B" />
+                  <MaterialCommunityIcons
+                    name="close-circle"
+                    size={24}
+                    color="#FF6B6B"
+                  />
                 </View>
-                <Text style={styles.protocolTileText}>Avoid{` \n`}intersections</Text>
+                <Text style={styles.protocolTileText}>
+                  Avoid{` \n`}intersections
+                </Text>
               </View>
             </View>
           </View>
@@ -1121,17 +1289,19 @@ const CitizenMap = ({ navigation }) => {
         onRequestClose={() => setReportModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={{flex: 1}} 
-            activeOpacity={1} 
-            onPress={() => setReportModalVisible(false)} 
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setReportModalVisible(false)}
           />
           <View style={styles.premiumReportModal}>
             <View style={styles.modalHandle} />
-            
+
             <View style={styles.modalHeader}>
               <Text style={styles.premiumModalTitle}>Report Waterlogging</Text>
-              <Text style={styles.premiumModalSubtitle}>How deep is the water here?</Text>
+              <Text style={styles.premiumModalSubtitle}>
+                How deep is the water here?
+              </Text>
             </View>
 
             <View style={styles.reportOptionsContainer}>
@@ -1140,14 +1310,25 @@ const CitizenMap = ({ navigation }) => {
                 style={styles.depthCardAnkle}
                 onPress={() => submitHydroReport("Ankle")}
               >
-                <View style={[styles.depthIconCircle, { backgroundColor: "rgba(255,255,255,0.1)" }]}>
+                <View
+                  style={[
+                    styles.depthIconCircle,
+                    { backgroundColor: "rgba(255,255,255,0.1)" },
+                  ]}
+                >
                   <MaterialCommunityIcons name="water" size={24} color="#FFF" />
                 </View>
                 <View style={styles.depthTextContainer}>
                   <Text style={styles.depthTitle}>Ankle Deep</Text>
-                  <Text style={styles.depthSubtitle}>Minor pooling, passable</Text>
+                  <Text style={styles.depthSubtitle}>
+                    Minor pooling, passable
+                  </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" />
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color="rgba(255,255,255,0.3)"
+                />
               </TouchableOpacity>
 
               {/* KNEE DEEP */}
@@ -1155,14 +1336,25 @@ const CitizenMap = ({ navigation }) => {
                 style={styles.depthCardKnee}
                 onPress={() => submitHydroReport("Knee")}
               >
-                <View style={[styles.depthIconCircle, { backgroundColor: "rgba(0,0,0,0.15)" }]}>
+                <View
+                  style={[
+                    styles.depthIconCircle,
+                    { backgroundColor: "rgba(0,0,0,0.15)" },
+                  ]}
+                >
                   <MaterialCommunityIcons name="waves" size={24} color="#FFF" />
                 </View>
                 <View style={styles.depthTextContainer}>
                   <Text style={styles.depthTitle}>Knee Deep</Text>
-                  <Text style={styles.depthSubtitle}>Significant flow, difficult</Text>
+                  <Text style={styles.depthSubtitle}>
+                    Significant flow, difficult
+                  </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="rgba(0,0,0,0.2)" />
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color="rgba(0,0,0,0.2)"
+                />
               </TouchableOpacity>
 
               {/* WAIST DEEP */}
@@ -1170,14 +1362,32 @@ const CitizenMap = ({ navigation }) => {
                 style={styles.depthCardWaist}
                 onPress={() => submitHydroReport("Waist")}
               >
-                <View style={[styles.depthIconCircle, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
+                <View
+                  style={[
+                    styles.depthIconCircle,
+                    { backgroundColor: "rgba(255,255,255,0.2)" },
+                  ]}
+                >
                   <MaterialCommunityIcons name="alert" size={24} color="#FFF" />
                 </View>
                 <View style={styles.depthTextContainer}>
-                  <Text style={[styles.depthTitle, { fontWeight: "900" }]}>WAIST DEEP (DANGER)</Text>
-                  <Text style={[styles.depthSubtitle, { color: "rgba(255,255,255,0.8)" }]}>Life threatening, do not cross</Text>
+                  <Text style={[styles.depthTitle, { fontWeight: "900" }]}>
+                    WAIST DEEP (DANGER)
+                  </Text>
+                  <Text
+                    style={[
+                      styles.depthSubtitle,
+                      { color: "rgba(255,255,255,0.8)" },
+                    ]}
+                  >
+                    Life threatening, do not cross
+                  </Text>
                 </View>
-                <MaterialCommunityIcons name="exclamation-thick" size={22} color="rgba(255,255,255,0.5)" />
+                <MaterialCommunityIcons
+                  name="exclamation-thick"
+                  size={22}
+                  color="rgba(255,255,255,0.5)"
+                />
               </TouchableOpacity>
             </View>
 
@@ -1621,7 +1831,7 @@ const styles = StyleSheet.create({
   depthBtnText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
   cancelBtn: { padding: 16, alignItems: "center", marginTop: 5 },
   cancelBtnText: { color: "#ff3b30", fontSize: 16, fontWeight: "bold" },
-  
+
   // --- NEW PREMIUM REPORT MODAL STYLES ---
   premiumReportModal: {
     backgroundColor: "#1C1C1E",

@@ -17,6 +17,7 @@
     "expo": "~54.0.33",
     "expo-image-picker": "~17.0.10",
     "expo-location": "~19.0.8",
+    "expo-module-scripts": "^55.0.2",
     "expo-speech": "~14.0.8",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",

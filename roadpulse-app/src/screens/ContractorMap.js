@@ -1,14 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  Alert, StatusBar, Modal, TextInput, SafeAreaView
-} from 'react-native';
-import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import * as Location from 'expo-location';
-import io from 'socket.io-client';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '../context/ThemeContext';
-import { Ionicons } from '@expo/vector-icons';
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  StatusBar,
+  Modal,
+  TextInput,
+  SafeAreaView,
+} from "react-native";
+import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import * as Location from "expo-location";
+import io from "socket.io-client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTheme } from "../context/ThemeContext";
+import { Ionicons } from "@expo/vector-icons";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -16,9 +23,21 @@ const darkMapStyle = [
   { elementType: "geometry", stylers: [{ color: "#0F1217" }] },
   { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#0F1217" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1A1D23" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0D1117" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8a8a8a" }] }
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#1A1D23" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#0D1117" }],
+  },
+  {
+    featureType: "road",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#8a8a8a" }],
+  },
 ];
 
 export default function ContractorMap() {
@@ -45,7 +64,7 @@ export default function ContractorMap() {
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
+      if (status !== "granted") return;
 
       let location = await Location.getCurrentPositionAsync({});
       setMapRegion({
@@ -60,15 +79,15 @@ export default function ContractorMap() {
 
     socketRef.current = io(API_URL);
 
-    socketRef.current.on('NEW_ROADBLOCK', (newBlockade) => {
-      setBlockades(prev => {
-        const exists = prev.some(b => b._id === newBlockade._id);
+    socketRef.current.on("NEW_ROADBLOCK", (newBlockade) => {
+      setBlockades((prev) => {
+        const exists = prev.some((b) => b._id === newBlockade._id);
         if (exists) return prev;
         return [...prev, newBlockade];
       });
     });
 
-    socketRef.current.on('REMOVE_ALL_BLOCKADES', () => {
+    socketRef.current.on("REMOVE_ALL_BLOCKADES", () => {
       setBlockades([]);
     });
 
@@ -90,16 +109,19 @@ export default function ContractorMap() {
   const handleMapPress = (e) => {
     const coord = e.nativeEvent?.coordinate;
     if (!coord) return;
-    setCurrentDraft(prev => [...prev, coord]);
+    setCurrentDraft((prev) => [...prev, coord]);
   };
 
   const saveRoadblock = async () => {
     if (currentDraft.length < 3) {
-      Alert.alert("Need 3 points", "Please tap on the map to define the roadblock area.");
+      Alert.alert(
+        "Need 3 points",
+        "Please tap on the map to define the roadblock area.",
+      );
       return;
     }
 
-    const geo = currentDraft.map(p => [p.longitude, p.latitude]);
+    const geo = currentDraft.map((p) => [p.longitude, p.latitude]);
     geo.push([currentDraft[0].longitude, currentDraft[0].latitude]);
 
     try {
@@ -113,13 +135,13 @@ export default function ContractorMap() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           coordinates: [geo],
           reason: blockReason,
-          days: blockDays
-        })
+          days: blockDays,
+        }),
       });
 
       const data = await res.json();
@@ -148,8 +170,8 @@ export default function ContractorMap() {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       if (res.ok) {
@@ -167,12 +189,17 @@ export default function ContractorMap() {
     }
   };
 
-  const format = (coords) => coords[0].map(c => ({ longitude: c[0], latitude: c[1] }));
+  const format = (coords) =>
+    coords[0].map((c) => ({ longitude: c[0], latitude: c[1] }));
   const clearDraft = () => setCurrentDraft([]);
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <StatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
 
       {/* FLOATING HEADER */}
       <SafeAreaView style={styles.headerOverlay}>
@@ -181,8 +208,12 @@ export default function ContractorMap() {
             <Ionicons name="construct" size={24} color={theme.primary} />
           </View>
           <View style={styles.headerText}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>Contractor Portal</Text>
-            <Text style={[styles.headerSubtitle, { color: theme.subText }]}>Live Road Blockade Management</Text>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>
+              Contractor Portal
+            </Text>
+            <Text style={[styles.headerSubtitle, { color: theme.subText }]}>
+              Live Road Blockade Management
+            </Text>
           </View>
           {/* <TouchableOpacity onPress={toggleTheme} style={styles.themeToggle}>
             <Ionicons name={isDark ? "sunny" : "moon"} size={22} color={theme.text} />
@@ -193,10 +224,12 @@ export default function ContractorMap() {
         <View style={styles.subActions}>
           <View style={[styles.pill, { backgroundColor: theme.card }]}>
             <Ionicons name="alert-circle" size={16} color={theme.danger} />
-            <Text style={[styles.pillText, { color: theme.text }]}>{blockades.length} Active</Text>
+            <Text style={[styles.pillText, { color: theme.text }]}>
+              {blockades.length} Active
+            </Text>
           </View>
-          <TouchableOpacity 
-            style={[styles.actionBtn, { backgroundColor: theme.danger }]} 
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: theme.danger }]}
             onPress={clearAllBlockages}
           >
             <Ionicons name="trash-outline" size={18} color="#fff" />
@@ -213,7 +246,7 @@ export default function ContractorMap() {
         customMapStyle={isDark ? darkMapStyle : []}
         onPress={handleMapPress}
       >
-        {blockades.map(b => (
+        {blockades.map((b) => (
           <Polygon
             key={b._id}
             coordinates={format(b.location.coordinates)}
@@ -225,7 +258,9 @@ export default function ContractorMap() {
 
         {currentDraft.map((p, i) => (
           <Marker key={i} coordinate={p}>
-            <View style={[styles.draftMarker, { backgroundColor: theme.primary }]}>
+            <View
+              style={[styles.draftMarker, { backgroundColor: theme.primary }]}
+            >
               <Text style={styles.markerText}>{i + 1}</Text>
             </View>
           </Marker>
@@ -235,42 +270,50 @@ export default function ContractorMap() {
       {/* DRAFTING OVERLAYS */}
       {currentDraft.length > 0 && (
         <View style={styles.draftOverlay}>
-  <View style={[styles.draftPill, { backgroundColor: '#14171C' }]}>
+          <View style={[styles.draftPill, { backgroundColor: "#14171C" }]}>
+            {/* TOP SECTION */}
+            <View style={styles.draftTop}>
+              <View style={styles.draftIconContainer}>
+                <Ionicons name="create" size={18} color="#fff" />
+              </View>
 
-    {/* TOP SECTION */}
-    <View style={styles.draftTop}>
-      <View style={styles.draftIconContainer}>
-        <Ionicons name="create" size={18} color="#fff" />
-      </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.draftTitle}>New Blockage</Text>
+                <Text style={styles.draftSubtitle}>
+                  Tap map to place marker
+                </Text>
+              </View>
+            </View>
 
-      <View style={{ flex: 1 }}>
-        <Text style={styles.draftTitle}>New Blockage</Text>
-        <Text style={styles.draftSubtitle}>Tap map to place marker</Text>
-      </View>
-    </View>
+            {/* BOTTOM ACTIONS */}
+            <View style={styles.draftActions}>
+              <TouchableOpacity
+                onPress={clearDraft}
+                style={styles.clearTextBtn}
+              >
+                <Text style={styles.clearText}>Clear</Text>
+              </TouchableOpacity>
 
-    {/* BOTTOM ACTIONS */}
-    <View style={styles.draftActions}>
-      <TouchableOpacity onPress={clearDraft} style={styles.clearTextBtn}>
-        <Text style={styles.clearText}>Clear</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={[styles.savePillBtn, { backgroundColor: theme.danger }]} 
-        onPress={() => setModalVisible(true)}
-      >
-        <Text style={styles.savePillBtnText}>Save Blockage</Text>
-      </TouchableOpacity>
-    </View>
-
-  </View>
-</View>
+              <TouchableOpacity
+                style={[styles.savePillBtn, { backgroundColor: theme.danger }]}
+                onPress={() => setModalVisible(true)}
+              >
+                <Text style={styles.savePillBtnText}>Save Blockage</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       )}
 
       {/* ADD BLOCKADE INSTRUCTION (WHEN NO DRAFT) */}
       {currentDraft.length === 0 && (
         <View style={styles.instructionContainer}>
-          <View style={[styles.instructionBox, { backgroundColor: 'rgba(26, 29, 35, 0.9)' }]}>
+          <View
+            style={[
+              styles.instructionBox,
+              { backgroundColor: "rgba(26, 29, 35, 0.9)" },
+            ]}
+          >
             <Ionicons name="finger-print" size={24} color={theme.primary} />
             <Text style={[styles.instructionText, { color: theme.text }]}>
               Tap 3 points on map to define blockage
@@ -282,8 +325,7 @@ export default function ContractorMap() {
       {/* BLOCKAGE DETAILS MODAL */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: '#14171C' }]}>
-            
+          <View style={[styles.modalCard, { backgroundColor: "#14171C" }]}>
             {/* Header */}
             <View style={styles.modalHeaderRow}>
               <View style={styles.alertCircle}>
@@ -291,7 +333,9 @@ export default function ContractorMap() {
               </View>
               <View>
                 <Text style={styles.modalTitleText}>Blockage Details</Text>
-                <Text style={styles.modalSubtitleText}>Update status for the current grid sector</Text>
+                <Text style={styles.modalSubtitleText}>
+                  Update status for the current grid sector
+                </Text>
               </View>
             </View>
 
@@ -306,7 +350,12 @@ export default function ContractorMap() {
                   onChangeText={setBlockReason}
                   style={styles.reasonInput}
                 />
-                <Ionicons name="create-outline" size={20} color="#666" style={styles.fieldIconRight} />
+                <Ionicons
+                  name="create-outline"
+                  size={20}
+                  color="#666"
+                  style={styles.fieldIconRight}
+                />
               </View>
             </View>
 
@@ -314,15 +363,21 @@ export default function ContractorMap() {
             <View style={styles.formSection}>
               <Text style={styles.fieldLabel}>ESTIMATED CLEARANCE</Text>
               <View style={styles.stepperContainer}>
-                <TouchableOpacity 
-                  onPress={() => setBlockDays(prev => String(Math.max(1, parseInt(prev || 1) - 1)))}
+                <TouchableOpacity
+                  onPress={() =>
+                    setBlockDays((prev) =>
+                      String(Math.max(1, parseInt(prev || 1) - 1)),
+                    )
+                  }
                   style={styles.stepperBtn}
                 >
                   <Ionicons name="remove-circle" size={32} color="#4285F4" />
                 </TouchableOpacity>
                 <Text style={styles.stepperValue}>{blockDays}</Text>
-                <TouchableOpacity 
-                  onPress={() => setBlockDays(prev => String(parseInt(prev || 0) + 1))}
+                <TouchableOpacity
+                  onPress={() =>
+                    setBlockDays((prev) => String(parseInt(prev || 0) + 1))
+                  }
                   style={styles.stepperBtn}
                 >
                   <Ionicons name="add-circle" size={32} color="#4285F4" />
@@ -334,20 +389,28 @@ export default function ContractorMap() {
             <View style={styles.infoRow}>
               <Ionicons name="information-circle" size={16} color="#A0AEC0" />
               <Text style={styles.infoText}>
-                Timeline affects automated route rerouting for local emergency services.
+                Timeline affects automated route rerouting for local emergency
+                services.
               </Text>
             </View>
 
             {/* Action Buttons */}
             <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: '#B22A22' }]} onPress={saveRoadblock}>
-                <Text style={styles.confirmBtnTextPremium}>Confirm Blockage</Text>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: "#B22A22" }]}
+                onPress={saveRoadblock}
+              >
+                <Text style={styles.confirmBtnTextPremium}>
+                  Confirm Blockage
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.cancelLink} onPress={() => setModalVisible(false)}>
+              <TouchableOpacity
+                style={styles.cancelLink}
+                onPress={() => setModalVisible(false)}
+              >
                 <Text style={styles.cancelBtnTextPremium}>Cancel</Text>
               </TouchableOpacity>
             </View>
-
           </View>
         </View>
       </Modal>
@@ -355,24 +418,29 @@ export default function ContractorMap() {
       {/* CLEAR ALL CONFIRMATION MODAL */}
       <Modal visible={confirmClearVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.confirmModalCard, { backgroundColor: '#14171C' }]}>
+          <View
+            style={[styles.confirmModalCard, { backgroundColor: "#14171C" }]}
+          >
             <View style={styles.confirmIconContainer}>
               <Ionicons name="trash-outline" size={32} color="#FF5247" />
             </View>
             <Text style={styles.confirmTitle}>Clear All Blockades?</Text>
             <Text style={styles.confirmSubtitle}>
-              This action will remove all active road hazards and broadcast the clearance to all drivers.
+              This action will remove all active road hazards and broadcast the
+              clearance to all drivers.
             </Text>
-            
-            <TouchableOpacity 
-              style={[styles.confirmActionBtn, { backgroundColor: '#FF5247' }]} 
+
+            <TouchableOpacity
+              style={[styles.confirmActionBtn, { backgroundColor: "#FF5247" }]}
               onPress={handleConfirmClear}
             >
-              <Text style={styles.confirmActionText}>Yes, Clear Everything</Text>
+              <Text style={styles.confirmActionText}>
+                Yes, Clear Everything
+              </Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.confirmCancelBtn} 
+
+            <TouchableOpacity
+              style={styles.confirmCancelBtn}
               onPress={() => setConfirmClearVisible(false)}
             >
               <Text style={styles.confirmCancelText}>Cancel</Text>
@@ -384,9 +452,14 @@ export default function ContractorMap() {
       {/* SUCCESS TOAST */}
       {showSuccess && (
         <View style={styles.toastOverlay}>
-          <View style={[styles.toastContainer, { backgroundColor: '#14171C' }]}>
+          <View style={[styles.toastContainer, { backgroundColor: "#14171C" }]}>
             <View style={styles.toastLeft}>
-              <View style={[styles.successIconCircle, { backgroundColor: '#1F2228' }]}>
+              <View
+                style={[
+                  styles.successIconCircle,
+                  { backgroundColor: "#1F2228" },
+                ]}
+              >
                 <Ionicons name="checkmark-circle" size={24} color="#1c8338ff" />
               </View>
               <View style={styles.toastTextContainer}>
@@ -394,7 +467,10 @@ export default function ContractorMap() {
                 <Text style={styles.toastMessage}>{successMessage}</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={() => setShowSuccess(false)} style={styles.toastClose}>
+            <TouchableOpacity
+              onPress={() => setShowSuccess(false)}
+              style={styles.toastClose}
+            >
               <Ionicons name="close" size={20} color="#A0AEC0" />
             </TouchableOpacity>
           </View>
@@ -407,13 +483,13 @@ export default function ContractorMap() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: "#000",
   },
   map: {
     ...StyleSheet.absoluteFillObject,
   },
   headerOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 40,
     left: 0,
     right: 0,
@@ -421,11 +497,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
     borderRadius: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -435,8 +511,8 @@ const styles = StyleSheet.create({
     width: 45,
     height: 45,
     borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   headerText: {
@@ -444,156 +520,156 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   headerSubtitle: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   themeToggle: {
     padding: 8,
   },
   subActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 15,
   },
   pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 50,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: "rgba(255,255,255,0.05)",
   },
   pillText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
     marginLeft: 8,
   },
   actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 50,
   },
   actionBtnText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
     marginLeft: 8,
   },
   draftOverlay: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 30,
     left: 20,
     right: 20,
     zIndex: 100,
   },
   draftPill: {
-  padding: 15,
-  borderRadius: 25,
+    padding: 15,
+    borderRadius: 25,
   },
   draftTop: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  marginBottom: 12,
-},
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   draftInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
   },
   draftIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   draftTitle: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   draftSubtitle: {
-    color: '#A0AEC0',
+    color: "#A0AEC0",
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   draftActions: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-},
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   clearTextBtn: {
-  paddingVertical: 8,
-  paddingHorizontal: 15,
-  borderWidth: 1,
-  borderColor: 'rgba(255, 255, 255, 0.1)',
-  borderRadius: 20,
-  padding:20,
-},
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 20,
+    padding: 20,
+  },
   clearText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   savePillBtn: {
     paddingVertical: 15,
     paddingHorizontal: 25,
     borderRadius: 40,
-    shadowColor: '#FF5247',
+    shadowColor: "#FF5247",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 5,
   },
   savePillBtnText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   instructionContainer: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 40,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   instructionBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 15,
     borderRadius: 50,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: "rgba(255,255,255,0.1)",
   },
   instructionText: {
     marginLeft: 12,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   draftMarker: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: "#fff",
   },
   markerText: {
-    color: '#000',
+    color: "#000",
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: "900",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "flex-end",
   },
   modalCard: {
     borderTopLeftRadius: 35,
@@ -602,8 +678,8 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
   },
   modalHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 30,
     gap: 15,
   },
@@ -611,83 +687,83 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 82, 71, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255, 82, 71, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: 'rgba(255, 82, 71, 0.3)',
+    borderColor: "rgba(255, 82, 71, 0.3)",
   },
   modalTitleText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   modalSubtitleText: {
-    color: '#666',
+    color: "#666",
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 2,
   },
   formSection: {
     marginBottom: 25,
   },
   fieldLabel: {
-    color: '#666',
+    color: "#666",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1,
     marginBottom: 12,
   },
   reasonInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0D0E10',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0D0E10",
     borderRadius: 18,
     paddingHorizontal: 15,
     height: 65,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: "rgba(255,255,255,0.05)",
   },
   reasonInput: {
     flex: 1,
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   fieldIconRight: {
     marginLeft: 10,
   },
   stepperContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#0D0E10',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0D0E10",
     borderRadius: 18,
     paddingHorizontal: 15,
     height: 65,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: "rgba(255,255,255,0.05)",
   },
   stepperBtn: {
     padding: 5,
   },
   stepperValue: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     marginBottom: 40,
   },
   infoText: {
-    color: '#666',
+    color: "#666",
     fontSize: 12,
     lineHeight: 18,
     flex: 1,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   modalActions: {
     gap: 20,
@@ -695,89 +771,89 @@ const styles = StyleSheet.create({
   confirmBtn: {
     height: 65,
     borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#B22A22',
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#B22A22",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
   },
   confirmBtnTextPremium: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   cancelLink: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 10,
   },
   cancelBtnTextPremium: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   toastOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 120,
     left: 20,
     right: 20,
     zIndex: 999,
   },
   toastContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 15,
     borderRadius: 25,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
     shadowRadius: 15,
     elevation: 10,
   },
   toastLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
   },
   successIconCircle: {
     width: 45,
     height: 45,
     borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 15,
   },
   toastTextContainer: {
     flex: 1,
   },
   toastStatus: {
-    color: '#1c8338ff',
+    color: "#1c8338ff",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1.5,
     marginBottom: 2,
   },
   toastMessage: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '700',
-    },
+    fontWeight: "700",
+  },
   toastClose: {
     padding: 5,
     marginLeft: 10,
   },
   confirmModalCard: {
-    width: '85%',
-    backgroundColor: '#14171C',
+    width: "85%",
+    backgroundColor: "#14171C",
     borderRadius: 30,
     padding: 30,
-    alignItems: 'center',
-    alignSelf: 'center',
-    marginBottom: 'auto',
-    marginTop: 'auto',
-    shadowColor: '#000',
+    alignItems: "center",
+    alignSelf: "center",
+    marginBottom: "auto",
+    marginTop: "auto",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
     shadowRadius: 20,
@@ -787,48 +863,48 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: 'rgba(255, 82, 71, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255, 82, 71, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 20,
   },
   confirmTitle: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: "800",
     marginBottom: 10,
-    textAlign: 'center',
+    textAlign: "center",
   },
   confirmSubtitle: {
-    color: '#666',
+    color: "#666",
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 20,
     marginBottom: 30,
     paddingHorizontal: 10,
   },
   confirmActionBtn: {
-    width: '100%',
+    width: "100%",
     height: 60,
     borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 15,
   },
   confirmActionText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   confirmCancelBtn: {
-    width: '100%',
+    width: "100%",
     height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   confirmCancelText: {
-    color: '#A0AEC0',
+    color: "#A0AEC0",
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });
