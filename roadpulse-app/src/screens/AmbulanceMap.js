@@ -21,7 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../context/ThemeContext";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
-const API_URL = "http://10.42.96.103:5000";
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 const AmbulanceMap = ({ navigation }) => {
   const { theme, isDark } = useTheme();

@@ -22,7 +22,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../context/ThemeContext";
 import { Polyline } from "react-native-maps";
 
-const API_URL = "http://10.42.96.103:5000";
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 // --- Task 13: Haversine Distance Helper ---
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
