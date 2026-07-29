@@ -70,6 +70,14 @@ RoadPulse is an intelligent real-time navigation system designed to improve coor
 
 ---
 
+## 🌐 Live Demo & Showcase
+
+- **Backend API URL**: `https://<your-backend-app>.onrender.com` (Health check endpoint: `/health`)
+- **Android APK**: [Download RoadPulse APK](https://<link-to-your-apk-download-host>/roadpulse.apk) (recruiter-friendly mobile installation)
+- **GitHub Repository**: [https://github.com/afsheen-pathan/RoadPulse-Capstone](https://github.com/afsheen-pathan/RoadPulse-Capstone)
+
+---
+
 ## 🧑‍💻 Installation
 
 ```bash

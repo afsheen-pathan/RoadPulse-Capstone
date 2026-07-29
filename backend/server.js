@@ -5,6 +5,15 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
 
+// Validate required environment variables
+const REQUIRED_ENV_VARS = ["MONGO_URI", "JWT_SECRET"];
+REQUIRED_ENV_VARS.forEach((envVar) => {
+  if (!process.env[envVar]) {
+    console.error(`❌ ERROR: Missing required environment variable: ${envVar}`);
+    process.exit(1);
+  }
+});
+
 const authRoutes = require("./routes/authRoutes");
 const blockadeRoutes = require("./routes/blockadeRoutes");
 const LiveCitizen = require("./models/LiveCitizen");
@@ -48,6 +57,7 @@ const io = socketIo(server, {
     origin: "*",
     methods: ["GET", "POST"],
   },
+  transports: ["websocket", "polling"],
 });
 
 // 🔥 IMPORTANT
@@ -203,12 +213,21 @@ io.on("connection", (socket) => {
   });
 });
 
-// Test route
+// Health & Test routes
 app.get("/", (req, res) => {
-  res.send("API running...");
+  res.send("RoadPulse Backend Running");
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    service: "RoadPulse Backend",
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Start
-server.listen(process.env.PORT || 5000, "0.0.0.0", () => {
-  console.log("🚀 Server running");
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
