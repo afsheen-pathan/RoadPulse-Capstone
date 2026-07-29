@@ -1,45 +1,119 @@
-# 🚦 RoadPulse – Real-Time Smart Navigation System
+# 🚦 RoadPulse – AI-Powered Real-Time Smart Navigation System
 
-RoadPulse is an intelligent real-time navigation system designed to improve coordination between citizens, contractors, and emergency services. It aims to reduce traffic congestion, enhance route efficiency, and improve emergency response time using live data and smart routing.
+<p align="center">
 
+![Platform](https://img.shields.io/badge/Platform-React%20Native-blue)
+![Backend](https://img.shields.io/badge/Backend-Node.js-success)
+![Database](https://img.shields.io/badge/Database-MongoDB-green)
+![Realtime](https://img.shields.io/badge/Realtime-Socket.IO-black)
+![Routing](https://img.shields.io/badge/Routing-OSRM-orange)
+![Deployment](https://img.shields.io/badge/Backend-Render-purple)
+
+</p>
+
+RoadPulse is an AI-powered Smart Navigation System designed to improve urban traffic management by connecting citizens, contractors, and emergency responders through a real-time mobile platform.
+
+The system combines **real-time communication, AI-assisted reporting, geospatial intelligence, and intelligent route optimization** to reduce emergency response time, avoid blocked roads, and improve public safety.
+
+---
+
+## 🌐 Live Demo & Deployment
+
+### 🚀 Backend (Live)
+
+**API URL**
+
+https://roadpulse-backend-xpdy.onrender.com
+
+**Health Check**
+
+https://roadpulse-backend-xpdy.onrender.com/health
+
+> Backend deployed on **Render** with **MongoDB Atlas**. Render automatically performs health checks before routing traffic to the service. :contentReference[oaicite:0]{index=0}
+
+---
+
+### 📱 Android APK
+
+🚧 **Building with Expo EAS...**
+
+APK download link will be updated automatically after the build completes.
+
+---
+
+### 💻 GitHub Repository
+
+https://github.com/afsheen-pathan/RoadPulse-Capstone
+
+---
 ---
 
 ## 🚀 Features
 
-- 🚑 **Vanguard Bubble**  
-  Real-time proximity-based alert system for emergency vehicles.
+- 🚑 **Emergency Vehicle Priority (Vanguard Bubble)**  
+  Notifies nearby citizens in real time when an ambulance is approaching, helping clear traffic and reduce emergency response time.
 
-- 🚧 **Flash Red-Lining**  
-  Contractors can instantly mark blocked roads on the map.
+- 🚧 **Live Road Block Reporting (Flash Red-Lining)**  
+  Contractors can instantly report construction zones and blocked roads, which are immediately visible to all users.
 
-- 🌊 **Hydro-Map**  
-  Crowdsourced flood reporting with severity levels.
+- 🌊 **Flood & Waterlogging Detection (Hydro-Map)**  
+  Citizens can report waterlogged areas with severity levels, allowing other users to avoid unsafe routes.
 
-- 🚦 **Virtual V2I**  
-  Simulated smart traffic signal prioritization for ambulances.
+- 🤖 **AI-Assisted Incident Reporting**  
+  Integrated with Google Gemini AI to generate structured and detailed incident reports from user inputs, reducing manual effort.
 
-- 🧭 **Dynamic Routing (OSRM)**  
-  Real-time route calculation avoiding blocked and hazardous areas.
+- 🧭 **Smart Dynamic Routing (OSRM)**  
+  Calculates the fastest route while intelligently avoiding blocked roads, flood zones, and traffic disruptions.
 
+- 📡 **Real-Time GPS Tracking**  
+  Continuously tracks emergency vehicles and updates their live location using Socket.IO and WebSockets.
+
+- 🚦 **Virtual Vehicle-to-Infrastructure (V2I)**  
+  Simulates intelligent traffic signal prioritization by providing green-light preference for emergency vehicles.
+
+- 🔔 **Instant Real-Time Notifications**  
+  Broadcasts road closures, emergency alerts, flood warnings, and traffic updates instantly to connected users.
+
+- 🗺️ **Geospatial Intelligence**  
+  Uses MongoDB Geospatial Indexing and the Haversine Formula for efficient location-based queries and nearby event detection.
+
+- 👥 **Role-Based Access Control**  
+  Separate dashboards and permissions for Citizens, Contractors, and Ambulance Drivers to ensure secure and organized operations.
+
+- ☁️ **Cloud-Deployed Backend**  
+  Backend API is deployed on Render with MongoDB Atlas, providing a scalable and production-ready infrastructure.
+
+- 📱 Cross-Platform Mobile Application**  
+  Built with React Native and Expo, enabling the application to run seamlessly on Android devices.
 ---
 
 ## 🧠 Tech Stack
 
-### Frontend
-- React Native (Expo)
+### 📱 Frontend
+- React Native
+- Expo
 
-### Backend
+### ⚙️ Backend
 - Node.js
 - Express.js
 
-### Real-Time Communication
-- Socket.io (WebSockets)
+### 🗄️ Database
+- MongoDB Atlas
+- Geospatial Indexing
 
-### Database
-- MongoDB (Geospatial Indexing)
+### 🔄 Real-Time Communication
+- Socket.IO
 
-### Routing Engine
+### 🤖 Artificial Intelligence
+- Google Gemini API
+
+### 🗺️ Maps & Routing
 - OSRM (Open Source Routing Machine)
+- Haversine Formula
+
+### ☁️ Deployment
+- Render (Backend)
+- Expo EAS Build
 
 ---
 
@@ -52,6 +126,26 @@ RoadPulse is an intelligent real-time navigation system designed to improve coor
 5. OSRM calculates optimal routes while avoiding blocked or hazardous zones.
 
 ---
+
+---
+
+## 🏗️ System Architecture
+
+```text
+             React Native (Expo)
+                      │
+                      ▼
+          Express.js REST API (Render)
+                      │
+      ┌───────────────┼───────────────┐
+      │               │               │
+      ▼               ▼               ▼
+ MongoDB Atlas    Socket.IO       Gemini AI
+      │               │
+      └───────────────┼───────────────┘
+                      ▼
+               OSRM Routing Engine
+```
 
 ## 📸 Screenshots
 
@@ -353,45 +447,93 @@ RoadPulse is an intelligent real-time navigation system designed to improve coor
 </tr>
 </table>
 
-## 📱 Use Case
+## 📱 Real-World Use Cases
 
-- Emergency vehicles get priority movement through traffic.
-- Users receive real-time alerts to clear lanes.
-- Roads blocked by construction are instantly visible.
-- Flood-prone areas are avoided dynamically.
+- 🚑 Emergency vehicles receive intelligent route prioritization.
+- 🚦 Citizens receive real-time alerts to clear emergency lanes.
+- 🚧 Contractors instantly report road blockages.
+- 🌊 Flood-prone areas are detected and avoided dynamically.
+- 🤖 AI assists users in generating structured incident reports.
+- 📡 Live tracking improves coordination between emergency responders and citizens.
 
 ---
 
 ## 🔮 Future Scope
 
-- Integration with IoT-based traffic signals
-- AI-based predictive traffic analysis
-- Smart city infrastructure connectivity
-
----
-
-## 🌐 Live Demo & Showcase
-
-- **Backend API URL**: `https://<your-backend-app>.onrender.com` (Health check endpoint: `/health`)
-- **Android APK**: [Download RoadPulse APK](https://<link-to-your-apk-download-host>/roadpulse.apk) (recruiter-friendly mobile installation)
-- **GitHub Repository**: [https://github.com/afsheen-pathan/RoadPulse-Capstone](https://github.com/afsheen-pathan/RoadPulse-Capstone)
+- IoT-enabled Smart Traffic Signals
+- AI-based Predictive Traffic Analysis
+- Machine Learning for Congestion Prediction
+- Government Smart City Integration
+- Push Notifications
+- Offline Navigation Support
+- Multi-City Deployment
 
 ---
 
 ## 🧑‍💻 Installation
 
+### Clone Repository
+
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/roadpulse.git
+git clone https://github.com/afsheen-pathan/RoadPulse-Capstone.git
 
-# Navigate to project
-cd roadpulse
+cd RoadPulse-Capstone
+```
 
-# Install dependencies
+---
+
+### Backend Setup
+
+```bash
+cd backend
+
 npm install
 
-# Start backend
 npm start
+```
 
-# Start frontend (Expo)
+---
+
+### Frontend Setup
+
+```bash
+cd roadpulse-app
+
+npm install
+
 npx expo start
+```
+
+---
+
+### Environment Variables
+
+Backend
+
+```env
+MONGO_URI=
+JWT_SECRET=
+```
+
+Frontend
+
+```env
+EXPO_PUBLIC_API_URL=https://roadpulse-backend-xpdy.onrender.com
+```
+
+---
+
+---
+
+## 👨‍💻 Developer
+
+**Afshin Pathan**
+
+📍 Ahmedabad, Gujarat, India
+
+GitHub:
+https://github.com/afsheen-pathan
+
+---
+
+⭐ If you found this project useful, consider giving it a star!
